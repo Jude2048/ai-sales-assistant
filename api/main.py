@@ -39,7 +39,7 @@ async def google_login():
 
     url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
 
-    return RedirectResponse(url)
+    return {"authorization_url": url}
 
 @app.get("/privacy-policy", response_class=HTMLResponse)
 async def privacy_policy():
