@@ -1,4 +1,5 @@
 import os
+from pydoc import text
 
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
@@ -91,6 +92,10 @@ async def receive_instagram_webhook(request: Request): #this function handles in
         )
 
         create_message(message_obj.model_dump())
+        print("INSTAGRAM MESSAGE SAVED TO MONGODB")
+        print("Lead:", lead_id)
+        print("Conversation:", conversation_id)
+        print("Message:", text)
 
         return {
             "status": "received",
