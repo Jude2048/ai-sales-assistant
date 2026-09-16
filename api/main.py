@@ -63,23 +63,7 @@ async def google_login():
 
     return RedirectResponse(url)
 
-@app.get("/debug/google")
-async def debug_google():
-    return {
-        "client_id_loaded": bool(os.getenv("GOOGLE_CLIENT_ID")),
-        "client_secret_loaded": bool(os.getenv("GOOGLE_CLIENT_SECRET")),
-        "redirect_uri_loaded": bool(os.getenv("GOOGLE_REDIRECT_URI")),
-        "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI"),
-    }
 
-@app.get("/debug/mongo")
-async def debug_mongo():
-    try:
-        client = MongoClient(os.getenv("MONGODB_URI"), serverSelectionTimeoutMS=5000)
-        client.admin.command("ping")
-        return {"mongodb_connected": True}
-    except Exception as e:
-        return {"mongodb_connected": False, "error": str(e)}
 
 @app.get("/privacy-policy", response_class=HTMLResponse)
 async def privacy_policy():
