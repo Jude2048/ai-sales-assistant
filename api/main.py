@@ -9,6 +9,14 @@ from urllib.parse import urlencode
 from pymongo import MongoClient
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from shared.mongo import (
+    create_lead,
+    create_conversation,
+    create_message,
+    get_lead,
+    get_conversation,
+    messages_collection,
+)
 
 import json
     
@@ -112,8 +120,7 @@ async def gmail_inbox():
             msg = service.users().messages().get(
                 userId="me",
                 id=item["id"],
-                format="metadata",
-                metadataHeaders=["From", "Subject"]
+                format="full"
             ).execute()
 
             headers = {
@@ -121,10 +128,84 @@ async def gmail_inbox():
                 for h in msg.get("payload", {}).get("headers", [])
             }
 
+            sender = headers.get("From", "")
+            subject = headers.get("Subject", "")
+            
+            # Get plain-text body
+            body = ""
+
+            payload = msg.get("payload", {})
+
+            if payload.get("body", {}).get("data"):
+                import base64
+                body = base64.urlsafe_b64decode(
+                    payload["body"]["data"]
+                ).decode("utf-8", errors="ignore")
+
+            elif payload.get("parts"):
+                for part in payload["parts"]:
+                    if part.get("mimeType") == "text/plain":
+                        data = part.get("body", {}).get("data")
+                        if data:
+                            import base64
+                            body = base64.urlsafe_b64decode(
+                                data
+                            ).decode("utf-8", errors="ignore")
+                        break
+
+            lead_id = f"email_{sender.lower()}"
+            conversation_id = f"email_{sender.lower()}"
+
+            # Create lead
+            if not get_lead(lead_id):
+                lead = Lead(
+                    lead_id=lead_id,
+                    channel="email",
+                    sender_id=sender,
+                )
+                create_lead(lead.model_dump())
+
+            # Create conversation
+            if not get_conversation(conversation_id):
+                conversation = Conversation(
+                    conversation_id=conversation_id,
+                    lead_id=lead_id,
+                    channel="email",
+                    sender_id=sender,
+                )
+                create_conversation(conversation.model_dump())
+
+            # Avoid saving the same email twice
+            existing_messages = list(
+                messages_collection.find({
+                    "conversation_id": conversation_id,
+                    "provider_message_id": item["id"]
+                })
+            )
+
+            if not existing_messages:
+                message = Message(
+                    conversation_id=conversation_id,
+                    lead_id=lead_id,
+                    channel="email",
+                    sender_id=sender,
+                    direction="inbound",
+                    content=f"Subject: {subject}\n\n{body}",
+                    provider_message_id=item["id"],
+                )
+
+                create_message(message.model_dump())
+
+                print("EMAIL MESSAGE SAVED TO MONGODB")
+                print("Lead:", lead_id)
+                print("Conversation:", conversation_id)
+                print("Subject:", subject)
+
             messages.append({
                 "id": item["id"],
-                "from": headers.get("From"),
-                "subject": headers.get("Subject"),
+                "from": sender,
+                "subject": subject,
+                "saved": True,
             })
 
         return {
