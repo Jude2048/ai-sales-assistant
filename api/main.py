@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from api.webhooks.whatsapp import router as whatsapp_router
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
+import json
     
 
 app = FastAPI(title="AI Sales Assistant")
