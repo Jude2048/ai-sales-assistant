@@ -1,8 +1,10 @@
+import os
+from urllib.parse import urlencode
 from fastapi import FastAPI
 from api.webhooks.instagram import router as instagram_router
-from fastapi.responses import HTMLResponse
-from api.webhooks.whatsapp import router as whatsapp_router
 from fastapi.responses import HTMLResponse, RedirectResponse
+from api.webhooks.whatsapp import router as whatsapp_router
+
     
 
 app = FastAPI(title="AI Sales Assistant")
@@ -23,6 +25,21 @@ async def google_callback(code: str | None = None):
         "status": "Google OAuth callback received",
         "code_received": True,
     }
+
+@app.get("/auth/google")
+async def google_login():
+    params = {
+        "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+        "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI"),
+        "response_type": "code",
+        "scope": "https://www.googleapis.com/auth/gmail.readonly",
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+
+    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+
+    return RedirectResponse(url)
 
 @app.get("/privacy-policy", response_class=HTMLResponse)
 async def privacy_policy():
