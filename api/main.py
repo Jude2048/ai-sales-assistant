@@ -15,6 +15,10 @@ app = FastAPI(title="AI Sales Assistant")
 app.include_router(instagram_router, prefix="/webhooks")
 app.include_router(whatsapp_router, prefix="/webhooks")
 
+mongo_client = MongoClient(os.getenv("MONGODB_URI"))
+db = mongo_client["ai_sales_assistant"]
+google_tokens = db["google_tokens"] 
+
 @app.get("/")
 async def root():
     return {"status": "ok"}
@@ -41,11 +45,23 @@ async def google_callback(code: str | None = None):
 
     with urlopen(request) as response:
         tokens = json.loads(response.read())
+        refresh_token = tokens.get("refresh_token")
+
+        if refresh_token:
+            google_tokens.update_one(
+            {"provider": "gmail"},
+            {
+             "$set": {
+                "provider": "gmail",
+                "refresh_token": refresh_token,
+                }
+            },
+            upsert=True,
+        )   
 
     return {
         "status": "Google OAuth successful",
-        "access_token_received": bool(tokens.get("access_token")),
-        "refresh_token_received": bool(tokens.get("refresh_token")),
+    "refresh_token_saved": bool(refresh_token),
     }
 
 @app.get("/auth/google")
