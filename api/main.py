@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from api.webhooks.instagram import router as instagram_router
 from fastapi.responses import HTMLResponse
 from api.webhooks.whatsapp import router as whatsapp_router
+from fastapi.responses import HTMLResponse, RedirectResponse
     
 
 app = FastAPI(title="AI Sales Assistant")
@@ -12,6 +13,16 @@ app.include_router(whatsapp_router, prefix="/webhooks")
 @app.get("/")
 async def root():
     return {"status": "ok"}
+
+@app.get("/auth/google/callback")
+async def google_callback(code: str | None = None):
+    if not code:
+        return {"error": "Missing authorization code"}
+
+    return {
+        "status": "Google OAuth callback received",
+        "code_received": True,
+    }
 
 @app.get("/privacy-policy", response_class=HTMLResponse)
 async def privacy_policy():
