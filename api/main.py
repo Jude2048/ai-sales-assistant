@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from api.webhooks.whatsapp import router as whatsapp_router
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
+from pymongo import MongoClient
 import json
     
 
@@ -70,6 +71,15 @@ async def debug_google():
         "redirect_uri_loaded": bool(os.getenv("GOOGLE_REDIRECT_URI")),
         "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI"),
     }
+
+@app.get("/debug/mongo")
+async def debug_mongo():
+    try:
+        client = MongoClient(os.getenv("MONGODB_URI"), serverSelectionTimeoutMS=5000)
+        client.admin.command("ping")
+        return {"mongodb_connected": True}
+    except Exception as e:
+        return {"mongodb_connected": False, "error": str(e)}
 
 @app.get("/privacy-policy", response_class=HTMLResponse)
 async def privacy_policy():
