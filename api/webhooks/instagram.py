@@ -3,12 +3,21 @@ import os
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
 
-router = APIRouter()
+from shared.mongo import (
+    create_lead,
+    create_conversation,
+    create_message,
+    get_lead,
+    get_conversation,
+)
+from shared.schemas import Lead, Conversation, Message
+
+router = APIRouter() #This router will handle Instagram webhook endpoints
 
 VERIFY_TOKEN = os.getenv("INSTAGRAM_VERIFY_TOKEN")
 
 
-@router.get("/instagram", response_class=PlainTextResponse)
+@router.get("/instagram", response_class=PlainTextResponse) #endpoint for Instagram webhook verification
 async def verify_instagram_webhook(
     hub_mode: str | None = None,
     hub_verify_token: str | None = None,
@@ -20,11 +29,80 @@ async def verify_instagram_webhook(
     return "Verification failed"
 
 
-@router.post("/instagram")
-async def receive_instagram_webhook(request: Request):
+@router.post("/instagram") #endpoint for receiving Instagram webhook events
+async def receive_instagram_webhook(request: Request): #this function handles incoming POST requests from Instagram's webhook
     payload = await request.json()
 
     print("Instagram webhook received:")
     print(payload)
 
-    return {"status": "received"}
+    # Temporary extraction — we'll adapt this to the exact
+    # Meta payload after testing with a real message.
+    try:
+        entry = payload["entry"][0]
+        messaging = entry["messaging"][0]
+
+        sender_id = messaging["sender"]["id"]
+        message_data = messaging.get("message", {})
+        text = message_data.get("text", "")
+        provider_message_id = message_data.get("mid")
+
+        if not text:
+            return {"status": "received", "saved": False}
+
+        channel = "instagram"
+        lead_id = f"instagram_{sender_id}"
+        conversation_id = f"instagram_{sender_id}"
+
+        # Create lead if it doesn't exist
+        lead = get_lead(lead_id)
+
+        if not lead:
+            lead_obj = Lead(
+                lead_id=lead_id,
+                channel=channel,
+                sender_id=sender_id,
+            )
+
+            create_lead(lead_obj.model_dump())
+
+        # Create conversation if it doesn't exist
+        conversation = get_conversation(conversation_id)
+
+        if not conversation:
+            conversation_obj = Conversation(
+                conversation_id=conversation_id,
+                lead_id=lead_id,
+                channel=channel,
+                sender_id=sender_id,
+            )
+
+            create_conversation(conversation_obj.model_dump())
+
+        # Save message
+        message_obj = Message(
+            conversation_id=conversation_id,
+            lead_id=lead_id,
+            channel=channel,
+            sender_id=sender_id,
+            direction="inbound",
+            content=text,
+            provider_message_id=provider_message_id,
+        )
+
+        create_message(message_obj.model_dump())
+
+        return {
+            "status": "received",
+            "saved": True,
+            "lead_id": lead_id,
+            "conversation_id": conversation_id,
+        }
+
+    except Exception as e:
+        print("Instagram persistence error:", str(e))
+        return {
+            "status": "received",
+            "saved": False,
+            "error": str(e),
+        }
