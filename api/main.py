@@ -39,7 +39,7 @@ async def google_login():
 
     url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
 
-    return {"authorization_url": url}
+    return RedirectResponse(url)
 
 @app.get("/debug/google")
 async def debug_google():
