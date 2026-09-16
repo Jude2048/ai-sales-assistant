@@ -3,3 +3,5 @@ uvicorn
 pymongo
 python-dotenv
 python-multipart
+google-api-python-client
+google-auth
