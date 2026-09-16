@@ -17,7 +17,7 @@ from shared.mongo import (
     get_conversation,
     messages_collection,
 )
-
+from shared.schemas import Lead, Conversation, Message
 import json
     
 
