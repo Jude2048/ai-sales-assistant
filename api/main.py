@@ -1,6 +1,8 @@
 import os
 from urllib.parse import urlencode
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
+import asyncio
 from api.webhooks.instagram import router as instagram_router
 from fastapi.responses import HTMLResponse, RedirectResponse
 from api.webhooks.whatsapp import router as whatsapp_router
@@ -20,15 +22,29 @@ from shared.mongo import (
 from shared.schemas import Lead, Conversation, Message
 import json
     
-
-app = FastAPI(title="AI Sales Assistant")
-
-app.include_router(instagram_router, prefix="/webhooks")
-app.include_router(whatsapp_router, prefix="/webhooks")
+    
 
 mongo_client = MongoClient(os.getenv("MONGODB_URI"))
 db = mongo_client["ai_sales_assistant"]
 google_tokens = db["google_tokens"] 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(gmail_poll_loop())
+
+    yield
+
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+# Create FastAPI app after lifespan is defined
+app = FastAPI(title="AI Sales Assistant", lifespan=lifespan)
+
+app.include_router(instagram_router, prefix="/webhooks")
+app.include_router(whatsapp_router, prefix="/webhooks")
 
 @app.get("/")
 async def root():
@@ -92,6 +108,9 @@ async def google_login():
 
 @app.get("/debug/gmail/inbox")
 async def gmail_inbox():
+    return await poll_gmail_inbox()
+
+async def poll_gmail_inbox():
     token_doc = google_tokens.find_one({"provider": "gmail"})
 
     if not token_doc:
@@ -130,16 +149,10 @@ async def gmail_inbox():
 
             sender = headers.get("From", "")
             subject = headers.get("Subject", "")
-            print("EMAIL:", item["id"])
-            print("FROM:", sender)
-            print("SUBJECT:", subject)
+            
             # Get plain-text body
             body = ""
-            print("EMAIL:", item["id"])
-            print("FROM:", sender)
-            print("SUBJECT:", subject)
-            print("BODY:", body)
-            print("BODY LENGTH1:", len(body))
+
             payload = msg.get("payload", {})
 
             if payload.get("body", {}).get("data"):
@@ -214,8 +227,6 @@ async def gmail_inbox():
                 "saved": True,
             })
 
-            print("BODY LENGTH:", len(body))
-
         return {
             "gmail_connected": True,
             "messages": messages,
@@ -226,6 +237,16 @@ async def gmail_inbox():
             "gmail_connected": False,
             "error": str(e),
         }
+
+async def gmail_poll_loop():
+    while True:
+        try:
+            await poll_gmail_inbox()
+        except Exception as e:
+            print("GMAIL POLLING ERROR:", e)
+
+        await asyncio.sleep(60)
+
 
 @app.get("/privacy-policy", response_class=HTMLResponse) #this endpoint serves the privacy policy page for the application
 async def privacy_policy():
