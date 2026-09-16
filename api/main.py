@@ -82,8 +82,8 @@ async def google_login():
 
     return RedirectResponse(url)
 
-@app.get("/debug/gmail")
-async def debug_gmail():
+@app.get("/debug/gmail/inbox")
+async def gmail_inbox():
     token_doc = google_tokens.find_one({"provider": "gmail"})
 
     if not token_doc:
@@ -103,12 +103,33 @@ async def debug_gmail():
 
         result = service.users().messages().list(
             userId="me",
-            maxResults=5
+            maxResults=10
         ).execute()
+
+        messages = []
+
+        for item in result.get("messages", []):
+            msg = service.users().messages().get(
+                userId="me",
+                id=item["id"],
+                format="metadata",
+                metadataHeaders=["From", "Subject"]
+            ).execute()
+
+            headers = {
+                h["name"]: h["value"]
+                for h in msg.get("payload", {}).get("headers", [])
+            }
+
+            messages.append({
+                "id": item["id"],
+                "from": headers.get("From"),
+                "subject": headers.get("Subject"),
+            })
 
         return {
             "gmail_connected": True,
-            "messages_found": len(result.get("messages", [])),
+            "messages": messages,
         }
 
     except Exception as e:
