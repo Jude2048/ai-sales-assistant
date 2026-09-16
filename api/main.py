@@ -41,6 +41,15 @@ async def google_login():
 
     return {"authorization_url": url}
 
+@app.get("/debug/google")
+async def debug_google():
+    return {
+        "client_id_loaded": bool(os.getenv("GOOGLE_CLIENT_ID")),
+        "client_secret_loaded": bool(os.getenv("GOOGLE_CLIENT_SECRET")),
+        "redirect_uri_loaded": bool(os.getenv("GOOGLE_REDIRECT_URI")),
+        "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI"),
+    }
+
 @app.get("/privacy-policy", response_class=HTMLResponse)
 async def privacy_policy():
     return """
