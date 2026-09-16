@@ -7,6 +7,9 @@ from api.webhooks.whatsapp import router as whatsapp_router
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from pymongo import MongoClient
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
 import json
     
 
@@ -79,9 +82,42 @@ async def google_login():
 
     return RedirectResponse(url)
 
+@app.get("/debug/gmail")
+async def debug_gmail():
+    token_doc = google_tokens.find_one({"provider": "gmail"})
 
+    if not token_doc:
+        return {"gmail_connected": False, "error": "No refresh token"}
 
-@app.get("/privacy-policy", response_class=HTMLResponse)
+    creds = Credentials(
+        token=None,
+        refresh_token=token_doc["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+        scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+    )
+
+    try:
+        service = build("gmail", "v1", credentials=creds)
+
+        result = service.users().messages().list(
+            userId="me",
+            maxResults=5
+        ).execute()
+
+        return {
+            "gmail_connected": True,
+            "messages_found": len(result.get("messages", [])),
+        }
+
+    except Exception as e:
+        return {
+            "gmail_connected": False,
+            "error": str(e),
+        }
+
+@app.get("/privacy-policy", response_class=HTMLResponse) #this endpoint serves the privacy policy page for the application
 async def privacy_policy():
     return """
     <html>
