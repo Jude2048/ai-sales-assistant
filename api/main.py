@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from api.webhooks.instagram import router as instagram_router
 from fastapi.responses import HTMLResponse, RedirectResponse
 from api.webhooks.whatsapp import router as whatsapp_router
-
+from urllib.request import Request, urlopen
+from urllib.parse import urlencode
     
 
 app = FastAPI(title="AI Sales Assistant")
@@ -21,9 +22,28 @@ async def google_callback(code: str | None = None):
     if not code:
         return {"error": "Missing authorization code"}
 
+    data = urlencode({
+        "code": code,
+        "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+        "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+        "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI"),
+        "grant_type": "authorization_code",
+    }).encode()
+
+    request = Request(
+        "https://oauth2.googleapis.com/token",
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    with urlopen(request) as response:
+        tokens = json.loads(response.read())
+
     return {
-        "status": "Google OAuth callback received",
-        "code_received": True,
+        "status": "Google OAuth successful",
+        "access_token_received": bool(tokens.get("access_token")),
+        "refresh_token_received": bool(tokens.get("refresh_token")),
     }
 
 @app.get("/auth/google")
