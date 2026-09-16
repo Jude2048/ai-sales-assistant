@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from api.webhooks.instagram import router as instagram_router
 from fastapi.responses import HTMLResponse
+from api.webhooks.whatsapp import router as whatsapp_router
+    
 
 app = FastAPI(title="AI Sales Assistant")
 
 app.include_router(instagram_router, prefix="/webhooks")
-
+app.include_router(whatsapp_router, prefix="/webhooks")
 
 @app.get("/")
 async def root():
