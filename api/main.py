@@ -130,10 +130,16 @@ async def gmail_inbox():
 
             sender = headers.get("From", "")
             subject = headers.get("Subject", "")
-            
+            print("EMAIL:", item["id"])
+            print("FROM:", sender)
+            print("SUBJECT:", subject)
             # Get plain-text body
             body = ""
-
+            print("EMAIL:", item["id"])
+            print("FROM:", sender)
+            print("SUBJECT:", subject)
+            print("BODY:", body)
+            print("BODY LENGTH1:", len(body))
             payload = msg.get("payload", {})
 
             if payload.get("body", {}).get("data"):
@@ -207,6 +213,8 @@ async def gmail_inbox():
                 "subject": subject,
                 "saved": True,
             })
+
+            print("BODY LENGTH:", len(body))
 
         return {
             "gmail_connected": True,
