@@ -202,8 +202,9 @@ async def poll_gmail_inbox():
         )
 
         result = service.users().messages().list(
-            userId="me",
-            maxResults=10
+                userId="me",
+                labelIds=["INBOX"],
+                maxResults=10
         ).execute()
 
         messages = []
@@ -234,6 +235,9 @@ async def poll_gmail_inbox():
 
             sender = headers.get("From", "")
             sender_name, sender_email = parseaddr(sender)
+            # Never process our own emails as customer inquiries
+            if sender_email.lower() == "ai.sales.assistant.test@gmail.com":
+                continue
             subject = headers.get("Subject", "")
             original_message_id = headers.get("Message-ID")
 
