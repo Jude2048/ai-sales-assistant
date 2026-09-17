@@ -184,3 +184,37 @@ def get_booking_slots():
                 return slots
 
     return slots
+
+def get_selected_booking_slot(lead: dict, message: str):
+    pending = lead.get("pending_booking")
+
+    if not pending or pending.get("status") != "awaiting_selection":
+        return None
+
+    slots = pending.get("slots", [])
+    text = message.strip().lower()
+
+    # Customer selects 1, 2, or 3
+    if text in ["1", "2", "3"]:
+        index = int(text) - 1
+
+        if index < len(slots):
+            return slots[index]
+
+    return None
+
+def is_booking_confirmation(message: str) -> bool:
+    text = message.lower().strip()
+
+    confirmations = [
+        "yes",
+        "yes please",
+        "confirm",
+        "confirmed",
+        "book it",
+        "book that",
+        "that works",
+        "that time works",
+    ]
+
+    return text in confirmations
