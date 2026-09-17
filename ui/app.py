@@ -134,30 +134,30 @@ if assignment.startswith("Assignment 1"):
     # --------------------------------------------------------
 
     with left:
-    st.subheader("📥 Unified Inbox")
+        st.subheader("📥 Unified Inbox")
 
-    leads_response = api_get("/api/leads")
+        leads_response = api_get("/api/leads")
 
-    if "error" in leads_response:
-        st.error(leads_response["error"])
-    else:
-        lead_list = leads_response.get("leads", [])
-
-        if not lead_list:
-            st.info("No leads found.")
+        if "error" in leads_response:
+            st.error(leads_response["error"])
         else:
-            for lead in lead_list:
-                lead_id = lead.get("lead_id", "")
-                channel = lead.get("channel", "").upper()
-                status = lead.get("status", "new")
+            lead_list = leads_response.get("leads", [])
 
-                if st.button(
-                    f"{channel} — {lead_id} — {status}",
-                    key=f"lead_{lead_id}",
-                    use_container_width=True,
-                ):
-                    st.session_state["selected_lead"] = lead_id
-                    st.rerun()
+            if not lead_list:
+                st.info("No leads found.")
+            else:
+                for lead in lead_list:
+                    lead_id = lead.get("lead_id", "")
+                    channel = lead.get("channel", "").upper()
+                    status = lead.get("status", "new")
+
+                    if st.button(
+                        f"{channel} — {lead_id} — {status}",
+                        key=f"lead_{lead_id}",
+                        use_container_width=True,
+                    ):
+                        st.session_state["selected_lead"] = lead_id
+                        st.rerun()
 
     # --------------------------------------------------------
     # SELECTED LEAD
