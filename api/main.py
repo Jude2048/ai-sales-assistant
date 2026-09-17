@@ -29,6 +29,7 @@ from shared.gemini import generate_response
 from api.assignment1.gmail_adapter import GmailAdapter
 from api.assignment1.conversation_engine import generate_reply
 from email.utils import parseaddr
+from api.assignment1.conversation_engine import qualify_lead
 import json
     
     
@@ -58,6 +59,7 @@ app.include_router(whatsapp_router, prefix="/webhooks")
 @app.get("/")
 async def root():
     return {"status": "ok"}
+
 
 class WhatsAppTestRequest(BaseModel):
     to: str
@@ -381,6 +383,18 @@ async def gmail_poll_loop():
             print("GMAIL POLLING ERROR:", e)
 
         await asyncio.sleep(60)
+
+class QualificationTestRequest(BaseModel):
+    conversation_id: str
+    message: str
+
+
+@app.post("/debug/qualify")
+async def test_qualification(request: QualificationTestRequest):
+    return qualify_lead(
+        conversation_id=request.conversation_id,
+        new_message=request.message,
+    )
 
 
 @app.get("/privacy-policy", response_class=HTMLResponse) #this endpoint serves the privacy policy page for the application
