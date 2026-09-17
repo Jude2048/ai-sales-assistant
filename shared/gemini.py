@@ -19,11 +19,9 @@ def generate_response(prompt: str) -> str:
 
 def extract_lead_facts(conversation: str) -> dict:
     prompt = f"""
-You extract facts from a sales conversation.
+You extract factual information from a sales conversation.
 
-Return ONLY valid JSON.
-
-Extract these fields:
+Return ONLY valid JSON with exactly these fields:
 
 {{
     "need": string or null,
@@ -33,25 +31,23 @@ Extract these fields:
 }}
 
 Rules:
-- Only extract information explicitly stated by the customer.
-- Never invent missing values.
-- If information is missing, use null.
-- Do not decide whether the lead is qualified.
-- Do not assign a representative.
-- Do not apply business policy.
-
-Service rules:
-- Identify the customer's primary requested service.
-- Choose ONLY one of these exact values:
+- Extract information explicitly stated by the customer.
+- Do not invent missing information.
+- "need" should contain the customer's stated business need.
+- "company_size" should be the number of employees if stated.
+- "budget" should be the stated numerical budget.
+- For "service", map the customer's request to ONE of these exact supported services when applicable:
   "data analytics"
   "business intelligence"
   "dashboard development"
   "data strategy"
-- If none match, return null.
-- If the customer mentions multiple needs, choose the primary business service that matches the supported list.
-- Do not invent or create new service names.
+- If multiple services are mentioned, select the supported service that best matches the customer's request.
+- If no supported service matches, use null.
+- Do not decide qualification.
+- Do not assign a representative.
+- Do not apply business policy.
 
-Conversation:
+Customer conversation:
 {conversation}
 """
 
@@ -62,10 +58,7 @@ Conversation:
 
     text = response.text.strip()
 
-    # Handle accidental markdown code fences
     if text.startswith("```"):
-        text = text.replace("```json", "")
-        text = text.replace("```", "")
-        text = text.strip()
+        text = text.replace("```json", "").replace("```", "").strip()
 
     return json.loads(text)
