@@ -3,17 +3,12 @@ from pydoc import text
 
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
-from api.assignment1.conversation_engine import generate_reply, qualify_lead
+from api.assignment1.conversation_engine import generate_reply, qualify_lead, get_selected_booking_slot, is_booking_confirmation, upate_lea
 from api.assignment1.instagram_adapter import InstagramAdapter
+from datetime import datetime
+import shared.mongo
+from api.assignment1.booking_service import book_meeting
 
-
-from shared.mongo import (
-    create_lead,
-    create_conversation,
-    create_message,
-    get_lead,
-    get_conversation,
-)
 from shared.schemas import Lead, Conversation, Message
 
 router = APIRouter() #This router will handle Instagram webhook endpoints
@@ -47,7 +42,6 @@ async def receive_instagram_webhook(request: Request):
         sender_id = str(messaging["sender"]["id"])
         message_data = messaging.get("message", {})
 
-        # Ignore Instagram echo messages
         if message_data.get("is_echo"):
             print("INSTAGRAM ECHO IGNORED")
             return {"status": "ignored_echo"}
@@ -62,8 +56,7 @@ async def receive_instagram_webhook(request: Request):
         lead_id = f"instagram_{sender_id}"
         conversation_id = f"instagram_{sender_id}"
 
-        # Create lead if it doesn't exist
-        lead = get_lead(lead_id)
+        lead = shared.mongo.get_lead(lead_id)
 
         if not lead:
             lead_obj = Lead(
@@ -72,11 +65,10 @@ async def receive_instagram_webhook(request: Request):
                 sender_id=sender_id,
             )
 
-            create_lead(lead_obj.model_dump())
+            shared.mongo.create_lead(lead_obj.model_dump())
             lead = lead_obj.model_dump()
 
-        # Create conversation if it doesn't exist
-        conversation = get_conversation(conversation_id)
+        conversation = shared.mongo.get_conversation(conversation_id)
 
         if not conversation:
             conversation_obj = Conversation(
@@ -86,64 +78,155 @@ async def receive_instagram_webhook(request: Request):
                 sender_id=sender_id,
             )
 
-            create_conversation(conversation_obj.model_dump())
+            shared.mongo.create_conversation(conversation_obj.model_dump())
 
         # Save inbound message
-        message_obj = Message(
-            conversation_id=conversation_id,
-            lead_id=lead_id,
-            channel=channel,
-            sender_id=sender_id,
-            direction="inbound",
-            content=text,
-            provider_message_id=provider_message_id,
+        shared.mongo.create_message(
+            Message(
+                conversation_id=conversation_id,
+                lead_id=lead_id,
+                channel=channel,
+                sender_id=sender_id,
+                direction="inbound",
+                content=text,
+                provider_message_id=provider_message_id,
+            ).model_dump()
         )
 
-        create_message(message_obj.model_dump())
-
         print("INSTAGRAM MESSAGE SAVED TO MONGODB")
-        print("Lead:", lead_id)
-        print("Conversation:", conversation_id)
-        print("Message:", text)
 
-        # Human takeover check
+        # Human takeover
         if not lead.get("automation_enabled", True):
-            print("INSTAGRAM AUTOMATION DISABLED")
             return {
                 "status": "received",
                 "saved": True,
                 "automation": "disabled",
             }
 
-        # Qualification FIRST
-        qualification = qualify_lead(
-            conversation_id=conversation_id,
-            new_message=text,
-        )
+        # ------------------------------------------------
+        # BOOKING FLOW
+        # ------------------------------------------------
 
-        print("INSTAGRAM QUALIFICATION:", qualification)
+        selected_slot = get_selected_booking_slot(lead, text)
 
-        # Generate appropriate reply
-        status = qualification["qualification"]["status"]
+        if selected_slot:
+            shared.mongo.update_lead(
+                lead_id,
+                {
+                    "pending_booking": {
+                        "slot": selected_slot,
+                        "status": "awaiting_confirmation",
+                    }
+                },
+            )
 
-        if status == "needs_information":
-            reply = qualification["qualification"]["follow_up"]
-
-        elif status == "qualified":
-            reply = qualification["qualification"]["slot_message"]
-
-        elif status == "not_qualified":
             reply = (
-        "Thank you for sharing those details. "
-        "Unfortunately, your requirements do not meet our "
-        "current qualification criteria."
-        )
+                f"You selected {datetime.fromisoformat(selected_slot).strftime('%A, %d %B at %H:%M')}. "
+                "Would you like me to confirm this booking?"
+            )
+
+        elif lead.get("pending_booking", {}).get("status") == "awaiting_confirmation":
+
+            if is_booking_confirmation(text):
+
+                pending = lead["pending_booking"]
+                selected_slot = pending["slot"]
+
+                start_time = datetime.fromisoformat(selected_slot)
+
+                result = book_meeting(
+                    lead_id=lead_id,
+                    conversation_id=conversation_id,
+                    attendee_email=None,
+                    start_time=start_time,
+                    duration_minutes=30,
+                    google_tokens_collection=shared.mongo.google_tokens_collection,
+                )
+
+                if result["status"] == "confirmed":
+                    shared.mongo.update_lead(
+                        lead_id,
+                        {
+                            "pending_booking": {
+                                "slot": selected_slot,
+                                "status": "confirmed",
+                            },
+                            "meeting_status": "confirmed",
+                        },
+                    )
+
+                    reply = (
+                        f"Your consultation is confirmed for "
+                        f"{start_time.strftime('%A, %d %B at %H:%M')}."
+                    )
+
+                elif result["status"] == "already_booked":
+                    shared.mongo.update_lead(
+                        lead_id,
+                        {
+                            "pending_booking": {
+                                "slot": selected_slot,
+                                "status": "confirmed",
+                            },
+                            "meeting_status": "confirmed",
+                        },
+                    )
+
+                    reply = "This consultation has already been booked."
+
+                else:
+                    shared.mongo.update_lead(
+                        lead_id,
+                        {
+                            "pending_booking": {
+                                "status": "slot_unavailable",
+                            }
+                        },
+                    )
+
+                    reply = (
+                        "Sorry, that slot is no longer available. "
+                        "Please choose another available time."
+                    )
+
+            else:
+                reply = (
+                    "Please reply with 'yes' to confirm the selected "
+                    "time, or choose another slot."
+                )
 
         else:
-            reply = generate_reply(
-        conversation_id=conversation_id,
-        new_message=text,
-    )
+            # ------------------------------------------------
+            # QUALIFICATION
+            # ------------------------------------------------
+
+            qualification = qualify_lead(
+                conversation_id=conversation_id,
+                new_message=text,
+            )
+
+            print("INSTAGRAM QUALIFICATION:", qualification)
+
+            status = qualification["qualification"]["status"]
+
+            if status == "needs_information":
+                reply = qualification["qualification"]["follow_up"]
+
+            elif status == "qualified":
+                reply = qualification["qualification"]["slot_message"]
+
+            elif status == "not_qualified":
+                reply = (
+                    "Thank you for sharing those details. "
+                    "Unfortunately, your requirements do not meet "
+                    "our current qualification criteria."
+                )
+
+            else:
+                reply = (
+                    "Thank you for your message. "
+                    "We'll review your requirements and get back to you."
+                )
 
         # Send reply
         adapter = InstagramAdapter()
@@ -154,12 +237,12 @@ async def receive_instagram_webhook(request: Request):
         )
 
         # Save outbound message
-        create_message(
+        shared.mongo.create_message(
             Message(
                 conversation_id=conversation_id,
                 lead_id=lead_id,
-                channel="instagram",
-                sender_id=17841423916787536,
+                channel=channel,
+                sender_id=str(17841423916787536),
                 direction="outbound",
                 content=reply,
             ).model_dump()

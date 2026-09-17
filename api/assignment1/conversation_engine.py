@@ -155,12 +155,10 @@ def get_booking_slots():
     calendar = GoogleCalendarAdapter(google_tokens_collection)
 
     now = datetime.now().astimezone()
-    start_date = now.date()
-
     slots = []
 
     for day_offset in range(7):
-        date = start_date + timedelta(days=day_offset)
+        date = now.date() + timedelta(days=day_offset)
 
         for hour in range(9, 17):
             start_time = datetime(
@@ -169,7 +167,7 @@ def get_booking_slots():
                 date.day,
                 hour,
                 0,
-                tzinfo=now.tzinfo
+                tzinfo=now.tzinfo,
             )
 
             end_time = start_time + timedelta(minutes=30)
@@ -194,7 +192,6 @@ def get_selected_booking_slot(lead: dict, message: str):
     slots = pending.get("slots", [])
     text = message.strip().lower()
 
-    # Customer selects 1, 2, or 3
     if text in ["1", "2", "3"]:
         index = int(text) - 1
 
@@ -206,7 +203,7 @@ def get_selected_booking_slot(lead: dict, message: str):
 def is_booking_confirmation(message: str) -> bool:
     text = message.lower().strip()
 
-    confirmations = [
+    return text in [
         "yes",
         "yes please",
         "confirm",
