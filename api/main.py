@@ -23,6 +23,7 @@ from shared.schemas import Lead, Conversation, Message
 from api.assignment1.whatsapp_adapter import WhatsAppAdapter
 from pydantic import BaseModel
 from api.assignment1.instagram_adapter import InstagramAdapter
+from api.assignment1.gmail_adapter import GmailAdapter
 import json
     
     
@@ -80,6 +81,22 @@ async def test_instagram_send(request: InstagramTestRequest):
 
     return adapter.send(
         recipient=request.to,
+        message=request.message,
+    )
+
+class GmailTestRequest(BaseModel):
+    to: str
+    subject: str
+    message: str
+
+
+@app.post("/debug/gmail/send")
+async def test_gmail_send(request: GmailTestRequest):
+    adapter = GmailAdapter(google_tokens)
+
+    return adapter.send(
+        recipient=request.to,
+        subject=request.subject,
         message=request.message,
     )
 
