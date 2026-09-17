@@ -30,6 +30,10 @@ from api.assignment1.gmail_adapter import GmailAdapter
 from api.assignment1.conversation_engine import generate_reply
 from email.utils import parseaddr
 from api.assignment1.conversation_engine import qualify_lead
+from datetime import datetime
+
+from api.assignment1.calendar_adapter import GoogleCalendarAdapter
+
 import json
     
     
@@ -190,10 +194,11 @@ async def poll_gmail_inbox():
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes=[
+        SCOPES = [
             "https://www.googleapis.com/auth/gmail.readonly",
             "https://www.googleapis.com/auth/gmail.send",
-        ],
+            "https://www.googleapis.com/auth/calendar",
+]
     )
 
     try:
@@ -412,6 +417,32 @@ async def test_qualification(request: QualificationTestRequest):
         conversation_id=request.conversation_id,
         new_message=request.message,
     )
+
+@app.get("/debug/calendar/availability")
+async def debug_calendar_availability():
+    from shared.mongo import google_tokens_collection
+
+    calendar = GoogleCalendarAdapter(
+        google_tokens_collection
+    )
+
+    start = datetime.fromisoformat(
+        "2026-09-18T09:00:00+01:00"
+    )
+
+    end = datetime.fromisoformat(
+        "2026-09-18T17:00:00+01:00"
+    )
+
+    busy = calendar.get_availability(
+        start,
+        end,
+    )
+
+    return {
+        "status": "ok",
+        "busy": busy,
+    }
 
 
 @app.get("/privacy-policy", response_class=HTMLResponse) #this endpoint serves the privacy policy page for the application

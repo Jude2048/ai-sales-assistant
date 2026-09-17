@@ -11,7 +11,8 @@ db = client["ai_sales_assistant"]
 leads_collection = db["leads"]
 conversations_collection = db["conversations"]
 messages_collection = db["messages"]
-
+bookings_collection = db["bookings"]
+google_tokens_collection = db["google_tokens"]
 
 def create_lead(lead: dict):
     return leads_collection.insert_one(lead)
@@ -48,3 +49,18 @@ def get_messages(conversation_id: str):
             {"conversation_id": conversation_id}
         ).sort("created_at", 1)
     )
+
+def get_booking_by_idempotency_key(idempotency_key: str):
+    return bookings_collection.find_one({
+        "idempotency_key": idempotency_key
+    })
+
+
+def create_booking(booking: dict):
+    return bookings_collection.insert_one(booking)
+
+
+def get_booking_by_lead(lead_id: str):
+    return bookings_collection.find_one({
+        "lead_id": lead_id
+    })
