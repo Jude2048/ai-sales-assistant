@@ -3,6 +3,8 @@ from pydoc import text
 
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
+from api.assignment1.conversation_engine import generate_reply
+from api.assignment1.instagram_adapter import InstagramAdapter
 
 from shared.mongo import (
     create_lead,
@@ -96,6 +98,32 @@ async def receive_instagram_webhook(request: Request): #this function handles in
         print("Lead:", lead_id)
         print("Conversation:", conversation_id)
         print("Message:", text)
+
+        if lead.automation_enabled:
+            reply = generate_reply(
+                conversation_id=conversation_id,
+                new_message=text,
+            )
+
+            adapter = InstagramAdapter()
+
+            adapter.send(
+             recipient=sender_id,
+            message=reply,
+        )
+
+        create_message(
+            Message(
+                conversation_id=conversation_id,
+                lead_id=lead_id,
+                channel="instagram",
+                sender_id=17841423916787536,  # Instagram Business Account ID
+                direction="outbound",
+                content=reply,
+            ).model_dump()
+        )
+
+        print("INSTAGRAM AI REPLY SAVED TO MONGODB")
 
         return {
             "status": "received",
