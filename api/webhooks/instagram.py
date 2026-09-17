@@ -99,7 +99,7 @@ async def receive_instagram_webhook(request: Request): #this function handles in
         print("Conversation:", conversation_id)
         print("Message:", text)
 
-        if lead.automation_enabled:
+        if lead.get("automation_enabled", True):
             reply = generate_reply(
                 conversation_id=conversation_id,
                 new_message=text,
