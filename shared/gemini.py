@@ -46,6 +46,12 @@ Rules:
 - Do not decide qualification.
 - Do not assign a representative.
 - Do not apply business policy.
+- When the customer provides a new value that conflicts with an earlier value,
+  use the customer's latest explicitly stated value.
+- The latest customer message has priority over earlier conversation history.
+- Example: if the earlier budget was £10000 but the latest customer message says
+  "I need your services for free", extract budget as 0.
+- Do not preserve an older value when the customer explicitly changes it.
 
 Customer conversation:
 {conversation}

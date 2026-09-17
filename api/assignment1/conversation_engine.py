@@ -13,10 +13,10 @@ def extract_facts(conversation_id: str, new_message: str) -> dict:
         conversation.append(f"{role}: {msg['content']}")
 
     conversation.append(f"Customer: {new_message}")
-
+    conversation_text = "\n".join(conversation)
     return extract_lead_facts(
-        "\n".join(conversation)
-    )
+    conversation_text
+)
 
 
 def build_prompt(conversation_id: str, new_message: str) -> str:
