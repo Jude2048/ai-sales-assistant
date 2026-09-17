@@ -1,5 +1,4 @@
 from __future__ import annotations
-from pdb import run
 
 from fastapi import APIRouter, HTTPException
 
@@ -15,10 +14,7 @@ from .orchestrator import (
     resume_run,
 )
 
-from .store import (
-    get_run,
-    save_run,
-)
+from .store import get_run
 
 
 router = APIRouter(
@@ -27,31 +23,45 @@ router = APIRouter(
 )
 
 
-@router.post("/runs/resume", response_model=AgentRun)
-def resume_assignment2_run(request: ResumeRequest):
+# ---------------------------------------------------------
+# START NEW RUN
+# ---------------------------------------------------------
+
+@router.post("/runs", response_model=AgentRun)
+def start_assignment2_run(request: RunRequest):
+
     try:
-        run = resume_run(
-            run_id=request.run_id,
+
+        run = start_run(
             session_id=request.session_id,
+            transcript=request.transcript,
+            company_rules=request.company_rules,
+            simulate_failure_at=request.simulate_failure_at,
         )
 
         return run
 
     except Exception as exc:
+
         raise HTTPException(
             status_code=500,
             detail=str(exc),
         )
 
-@router.get("/runs/{run_id}")
+
+# ---------------------------------------------------------
+# GET RUN
+# ---------------------------------------------------------
+
+@router.get("/runs/{run_id}", response_model=AgentRun)
 def get_assignment2_run(
     run_id: str,
     session_id: str = "demo-session",
 ):
 
     run = get_run(
-        run_id,
-        session_id,
+        run_id=run_id,
+        session_id=session_id,
     )
 
     if run is None:
@@ -61,10 +71,14 @@ def get_assignment2_run(
             detail="Run not found.",
         )
 
-    return run.model_dump()
+    return run
 
 
-@router.post("/runs/resume")
+# ---------------------------------------------------------
+# RESUME RUN
+# ---------------------------------------------------------
+
+@router.post("/runs/resume", response_model=AgentRun)
 def resume_assignment2_run(
     request: ResumeRequest,
 ):
@@ -73,10 +87,10 @@ def resume_assignment2_run(
 
         run = resume_run(
             run_id=request.run_id,
-            session_id="demo-session",
+            session_id=request.session_id,
         )
 
-        return run.model_dump()
+        return run
 
     except ValueError as exc:
 
@@ -93,13 +107,18 @@ def resume_assignment2_run(
         )
 
 
+# ---------------------------------------------------------
+# CORRECT SOURCE FACT
+# ---------------------------------------------------------
+
 @router.post("/runs/correct-fact")
 def correct_assignment2_fact(
     request: FactCorrectionRequest,
 ):
 
     run = get_run(
-        request.run_id
+        run_id=request.run_id,
+        session_id=request.session_id,
     )
 
     if run is None:
@@ -118,6 +137,7 @@ def correct_assignment2_fact(
             fact.content = request.new_content
 
             found = True
+            break
 
     if not found:
 
@@ -126,17 +146,26 @@ def correct_assignment2_fact(
             detail="Source fact not found.",
         )
 
+    # -----------------------------------------------------
+    # Move to the next source version ONCE.
+    # -----------------------------------------------------
+
     run.source_version += 1
 
-    # Mark all old agent outputs as stale.
+    # -----------------------------------------------------
+    # Previous outputs are now stale.
+    # -----------------------------------------------------
+
+    run.review_attempts = 0
+    run.final_plan = None
+    run.status = "RUNNING"
+
     for step in run.steps:
 
         if step.status == "COMPLETED":
-
             step.status = "STALE"
 
-    run.final_plan = None
-    run.status = "RUNNING"
+    from .store import save_run
 
     save_run(run)
 

@@ -91,6 +91,7 @@ class TranscriptInput(BaseModel):
 
 class FactCorrectionRequest(BaseModel):
     run_id: str
+    session_id: str
     fact_id: str
     new_content: str
 
