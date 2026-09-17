@@ -20,6 +20,8 @@ from shared.mongo import (
     messages_collection,
 )
 from shared.schemas import Lead, Conversation, Message
+from api.assignment1.whatsapp_adapter import WhatsAppAdapter
+from pydantic import BaseModel
 import json
     
     
@@ -28,9 +30,9 @@ mongo_client = MongoClient(os.getenv("MONGODB_URI"))
 db = mongo_client["ai_sales_assistant"]
 google_tokens = db["google_tokens"] 
 
-@asynccontextmanager
+@asynccontextmanager #This is a context manager that runs the Gmail polling loop in the background while the FastAPI app is running. It starts the loop when the app starts and cancels it when the app shuts down.
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(gmail_poll_loop())
+    task = asyncio.create_task(gmail_poll_loop()) #This starts the Gmail polling loop in the background when the FastAPI app starts. It runs the loop in a separate task so that it doesn't block the main thread. The loop will continue to run until the app is shut down, at which point the task will be cancelled and the loop will stop.
 
     yield
 
@@ -49,6 +51,22 @@ app.include_router(whatsapp_router, prefix="/webhooks")
 @app.get("/")
 async def root():
     return {"status": "ok"}
+
+class WhatsAppTestRequest(BaseModel):
+    to: str
+    message: str
+
+
+@app.post("/debug/whatsapp/send")
+async def test_whatsapp_send(request: WhatsAppTestRequest):
+    adapter = WhatsAppAdapter()
+
+    result = adapter.send(
+        recipient=request.to,
+        message=request.message,
+    )
+
+    return result
 
 @app.get("/auth/google/callback")
 async def google_callback(code: str | None = None):
@@ -106,11 +124,11 @@ async def google_login():
 
     return RedirectResponse(url)
 
-@app.get("/debug/gmail/inbox")
-async def gmail_inbox():
-    return await poll_gmail_inbox()
+@app.get("/debug/gmail/inbox") #this endpoint is for debugging and testing Gmail inbox polling
+async def gmail_inbox(): #Returns the latest 10 emails from the Gmail inbox and saves them to MongoDB if they are new
+    return await poll_gmail_inbox() 
 
-async def poll_gmail_inbox():
+async def poll_gmail_inbox(): #This function polls the Gmail inbox for new messages and saves them to MongoDB if they are new
     token_doc = google_tokens.find_one({"provider": "gmail"})
 
     if not token_doc:
