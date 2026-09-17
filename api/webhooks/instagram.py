@@ -127,9 +127,12 @@ async def receive_instagram_webhook(request: Request):
         if qualification["qualification"]["status"] == "needs_information":
             reply = qualification["qualification"]["follow_up"]
 
+        elif qualification["qualification"]["status"] == "qualified":
+             reply = qualification["qualification"]["slot_message"]
+
         else:
-            reply = generate_reply(
-                conversation_id=conversation_id,
+             reply = generate_reply(
+                 conversation_id=conversation_id,
                 new_message=text,
             )
 
