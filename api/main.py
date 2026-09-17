@@ -12,15 +12,7 @@ from urllib.parse import urlencode
 from pymongo import MongoClient
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from shared.mongo import (
-    create_lead,
-    create_conversation,
-    create_message,
-    get_lead,
-    get_conversation,
-    messages_collection,
-    google_tokens_collection,
-)
+import shared.mongo
 from shared.schemas import Lead, Conversation, Message
 from api.assignment1.whatsapp_adapter import WhatsAppAdapter
 from pydantic import BaseModel
@@ -30,7 +22,7 @@ from shared.gemini import generate_response
 from api.assignment1.gmail_adapter import GmailAdapter
 from api.assignment1.conversation_engine import generate_reply
 from email.utils import parseaddr
-from api.assignment1.conversation_engine import qualify_lead
+from api.assignment1.conversation_engine import qualify_lead, generate_reply, qualify_lead, get_selected_booking_slot, is_booking_confirmation
 from datetime import datetime
 
 from api.assignment1.calendar_adapter import GoogleCalendarAdapter
@@ -197,11 +189,11 @@ async def poll_gmail_inbox():
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes = [
+        scopes=[
             "https://www.googleapis.com/auth/gmail.readonly",
             "https://www.googleapis.com/auth/gmail.send",
             "https://www.googleapis.com/auth/calendar",
-]
+        ],
     )
 
     try:
@@ -212,9 +204,9 @@ async def poll_gmail_inbox():
         )
 
         result = service.users().messages().list(
-                userId="me",
-                labelIds=["INBOX"],
-                maxResults=10
+            userId="me",
+            labelIds=["INBOX"],
+            maxResults=10
         ).execute()
 
         messages = []
@@ -223,8 +215,7 @@ async def poll_gmail_inbox():
 
             gmail_message_id = item["id"]
 
-            # Skip emails already processed
-            existing_message = messages_collection.find_one({
+            existing_message = shared.mongo.messages_collection.find_one({
                 "channel": "email",
                 "provider_message_id": gmail_message_id,
             })
@@ -245,15 +236,14 @@ async def poll_gmail_inbox():
 
             sender = headers.get("From", "")
             sender_name, sender_email = parseaddr(sender)
-            # Never process our own emails as customer inquiries
+
             if sender_email.lower() == "ai.sales.assistant.test@gmail.com":
                 continue
+
             subject = headers.get("Subject", "")
             original_message_id = headers.get("Message-ID")
 
-            # Extract plain-text body
             body = ""
-
             payload = msg.get("payload", {})
 
             if payload.get("body", {}).get("data"):
@@ -265,9 +255,7 @@ async def poll_gmail_inbox():
 
             elif payload.get("parts"):
                 for part in payload["parts"]:
-
                     if part.get("mimeType") == "text/plain":
-
                         data = part.get("body", {}).get("data")
 
                         if data:
@@ -283,38 +271,35 @@ async def poll_gmail_inbox():
             conversation_id = f"email_{item['threadId']}"
 
             # Get or create lead
-            lead = get_lead(lead_id)
+            lead = shared.mongo.get_lead(lead_id)
 
             if not lead:
-                lead = Lead(
+                lead_obj = Lead(
                     lead_id=lead_id,
                     channel="email",
                     sender_id=sender_email,
                     sender_name=sender_name or None,
                 )
 
-                create_lead(lead.model_dump())
-
-                # Mongo now has the same structure
-                lead = lead.model_dump()
+                shared.mongo.create_lead(lead_obj.model_dump())
+                lead = lead_obj.model_dump()
 
             # Get or create conversation
-            conversation = get_conversation(conversation_id)
+            conversation = shared.mongo.get_conversation(conversation_id)
 
             if not conversation:
-                conversation = Conversation(
+                conversation_obj = Conversation(
                     conversation_id=conversation_id,
                     lead_id=lead_id,
                     channel="email",
                     sender_id=sender_email,
                 )
 
-                create_conversation(
-                    conversation.model_dump()
+                shared.mongo.create_conversation(
+                    conversation_obj.model_dump()
                 )
-                
 
-            # Save inbound message
+            # Save inbound
             message = Message(
                 conversation_id=conversation_id,
                 lead_id=lead_id,
@@ -325,57 +310,186 @@ async def poll_gmail_inbox():
                 provider_message_id=gmail_message_id,
             )
 
-            create_message(message.model_dump())
-
-            qualification = qualify_lead(
-                                conversation_id=conversation_id,
-                                new_message=body,
-                            )
-            if qualification["qualification"]["status"] == "needs_information":
-                reply = qualification["qualification"]["follow_up"]
-            else:
-                reply = generate_reply(
-                            conversation_id=conversation_id,
-                            new_message=body,  # Gmail uses body
-                        )
-            
-            print("GMAIL QUALIFICATION:", qualification)
+            shared.mongo.create_message(message.model_dump())
 
             print("EMAIL MESSAGE SAVED TO MONGODB")
-            print("Lead:", lead_id)
-            print("Conversation:", conversation_id)
-            print("Subject:", subject)
 
-            # Generate AI reply for new email
+            # Human takeover
             if not lead.get("automation_enabled", True):
                 print("AUTOMATION DISABLED - HUMAN TAKEOVER")
                 continue
 
-            reply = generate_reply(
+            # Refresh lead because previous messages may have changed it
+            lead = shared.mongo.get_lead(lead_id)
+
+            # =====================================================
+            # BOOKING FLOW
+            # =====================================================
+
+            selected_slot = get_selected_booking_slot(
+                lead,
+                body
+            )
+
+            if selected_slot:
+
+                update_lead(
+                    lead_id,
+                    {
+                        "pending_booking": {
+                            "slot": selected_slot,
+                            "status": "awaiting_confirmation",
+                        }
+                    },
+                )
+
+                slot_time = datetime.fromisoformat(selected_slot)
+
+                reply = (
+                    f"You selected {slot_time.strftime('%A, %d %B at %H:%M')}. "
+                    "Would you like me to confirm this booking?"
+                )
+
+            elif lead.get("pending_booking", {}).get("status") == "awaiting_confirmation":
+
+                if is_booking_confirmation(body):
+
+                    pending = lead["pending_booking"]
+                    selected_slot = pending["slot"]
+
+                    start_time = datetime.fromisoformat(
+                        selected_slot
+                    )
+
+                    booking_result = book_meeting(
+                        lead_id=lead_id,
+                        conversation_id=conversation_id,
+                        attendee_email=sender_email,
+                        start_time=start_time,
+                        duration_minutes=30,
+                        google_tokens_collection=google_tokens,
+                    )
+
+                    print("GMAIL BOOKING RESULT:", booking_result)
+
+                    if booking_result["status"] == "confirmed":
+
+                        update_lead(
+                            lead_id,
+                            {
+                                "pending_booking": {
+                                    "slot": selected_slot,
+                                    "status": "confirmed",
+                                },
+                                "meeting_status": "confirmed",
+                            },
+                        )
+
+                        reply = (
+                            f"Your consultation is confirmed for "
+                            f"{start_time.strftime('%A, %d %B at %H:%M')}."
+                        )
+
+                    elif booking_result["status"] == "already_booked":
+
+                        update_lead(
+                            lead_id,
+                            {
+                                "pending_booking": {
+                                    "slot": selected_slot,
+                                    "status": "confirmed",
+                                },
+                                "meeting_status": "confirmed",
+                            },
+                        )
+
+                        reply = "This consultation has already been booked."
+
+                    else:
+
+                        update_lead(
+                            lead_id,
+                            {
+                                "pending_booking": {
+                                    "status": "slot_unavailable",
+                                }
+                            },
+                        )
+
+                        reply = (
+                            "Sorry, that slot is no longer available. "
+                            "Please choose another available time."
+                        )
+
+                else:
+
+                    reply = (
+                        "Please reply with 'yes' to confirm the selected "
+                        "time, or choose another available slot."
+                    )
+
+            else:
+
+                # =================================================
+                # QUALIFICATION
+                # =================================================
+
+                qualification = qualify_lead(
                     conversation_id=conversation_id,
                     new_message=body,
                 )
 
+                print("GMAIL QUALIFICATION:", qualification)
+
+                status = qualification["qualification"]["status"]
+
+                if status == "needs_information":
+
+                    reply = qualification["qualification"]["follow_up"]
+
+                elif status == "qualified":
+
+                    reply = qualification["qualification"]["slot_message"]
+
+                elif status == "not_qualified":
+
+                    reply = (
+                        "Thank you for sharing those details. "
+                        "Unfortunately, your requirements do not meet "
+                        "our current qualification criteria."
+                    )
+
+                else:
+
+                    reply = (
+                        "Thank you for your message. "
+                        "We'll review your requirements and get back to you."
+                    )
+
+            # =====================================================
+            # SEND EMAIL
+            # =====================================================
+
             adapter = GmailAdapter(google_tokens)
 
             adapter.send(
-                    recipient=sender_email,
-                    subject=f"Re: {subject}",
-                    message=reply,
-                    thread_id=item["threadId"],
-                    in_reply_to=original_message_id,
-                )
+                recipient=sender_email,
+                subject=f"Re: {subject}",
+                message=reply,
+                thread_id=item["threadId"],
+                in_reply_to=original_message_id,
+            )
 
-            create_message(
-                    Message(
-                        conversation_id=conversation_id,
-                        lead_id=lead_id,
-                        channel="email",
-                        sender_id="sales_assistant",
-                        direction="outbound",
-                        content=reply,
-                    ).model_dump()
-                )
+            shared.mongo.create_message(
+                Message(
+                    conversation_id=conversation_id,
+                    lead_id=lead_id,
+                    channel="email",
+                    sender_id="sales_assistant",
+                    direction="outbound",
+                    content=reply,
+                ).model_dump()
+            )
 
             print("GMAIL AI REPLY SAVED TO MONGODB")
 
@@ -426,7 +540,7 @@ async def debug_calendar_availability():
     from shared.mongo import google_tokens_collection
 
     calendar = GoogleCalendarAdapter(
-        google_tokens_collection
+        shared.mongo.google_tokens_collection
     )
 
     start = datetime.fromisoformat(
@@ -457,7 +571,7 @@ async def debug_calendar_book():
             "2026-09-18T10:00:00+01:00"
         ),
         duration_minutes=30,
-        google_tokens_collection=google_tokens_collection,
+        google_tokens_collection=shared.mongo.google_tokens_collection,
     )
 
     return result
