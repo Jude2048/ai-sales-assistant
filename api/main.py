@@ -235,6 +235,7 @@ async def poll_gmail_inbox():
             sender = headers.get("From", "")
             sender_name, sender_email = parseaddr(sender)
             subject = headers.get("Subject", "")
+            original_message_id = headers.get("Message-ID")
 
             # Extract plain-text body
             body = ""
@@ -330,6 +331,8 @@ async def poll_gmail_inbox():
                     recipient=sender_email,
                     subject=f"Re: {subject}",
                     message=reply,
+                    thread_id=item["threadId"],
+                    in_reply_to=original_message_id,
                 )
 
                 create_message(
