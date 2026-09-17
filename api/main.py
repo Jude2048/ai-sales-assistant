@@ -24,6 +24,7 @@ from api.assignment1.whatsapp_adapter import WhatsAppAdapter
 from pydantic import BaseModel
 from api.assignment1.instagram_adapter import InstagramAdapter
 from api.assignment1.gmail_adapter import GmailAdapter
+from shared.gemini import generate_response
 import json
     
     
@@ -99,6 +100,14 @@ async def test_gmail_send(request: GmailTestRequest):
         subject=request.subject,
         message=request.message,
     )
+
+
+@app.get("/debug/gemini")
+async def debug_gemini():
+    response = generate_response(
+        "Reply with exactly: Gemini connection works."
+    )
+    return {"response": response}
 
 @app.get("/auth/google/callback")
 async def google_callback(code: str | None = None):
