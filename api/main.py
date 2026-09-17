@@ -576,6 +576,129 @@ async def debug_calendar_book():
 
     return result
 
+@app.get("/api/leads")
+async def api_get_leads():
+    leads = list(
+        shared.mongo.leads_collection.find(
+            {},
+            {"_id": 0}
+        ).sort("updated_at", -1)
+    )
+
+    return {
+        "leads": leads
+    }
+
+
+@app.get("/api/leads/{lead_id}")
+async def api_get_lead(lead_id: str):
+    lead = shared.mongo.get_lead(lead_id)
+
+    if not lead:
+        return {
+            "error": "Lead not found"
+        }
+
+    lead.pop("_id", None)
+
+    return lead
+
+
+@app.get("/api/leads/{lead_id}/conversation")
+async def api_get_conversation(lead_id: str):
+    conversation = shared.mongo.conversations_collection.find_one(
+        {"lead_id": lead_id}
+    )
+
+    if not conversation:
+        return {
+            "conversation": None,
+            "messages": []
+        }
+
+    conversation.pop("_id", None)
+
+    messages = shared.mongo.get_messages(
+        conversation["conversation_id"]
+    )
+
+    for message in messages:
+        message.pop("_id", None)
+
+    return {
+        "conversation": conversation,
+        "messages": messages
+    }
+
+
+@app.get("/api/leads/{lead_id}/actions")
+async def api_get_actions(lead_id: str):
+
+    # Action log collection
+    actions_collection = shared.mongo.db["action_log"]
+
+    actions = list(
+        actions_collection.find(
+            {"lead_id": lead_id},
+            {"_id": 0}
+        ).sort("created_at", -1)
+    )
+
+    return {
+        "actions": actions
+    }
+
+
+class AutomationRequest(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/leads/{lead_id}/automation")
+async def api_update_automation(
+    lead_id: str,
+    request: AutomationRequest,
+):
+
+    lead = shared.mongo.get_lead(lead_id)
+
+    if not lead:
+        return {
+            "error": "Lead not found"
+        }
+
+    shared.mongo.update_lead(
+        lead_id,
+        {
+            "automation_enabled": request.enabled,
+            "updated_at": datetime.utcnow(),
+        },
+    )
+
+    return {
+        "status": "updated",
+        "lead_id": lead_id,
+        "automation_enabled": request.enabled,
+    }
+
+
+@app.get("/api/bookings/{lead_id}")
+async def api_get_booking(lead_id: str):
+
+    booking = shared.mongo.get_booking_by_lead(
+        lead_id
+    )
+
+    if not booking:
+        return {
+            "booking": None
+        }
+
+    booking.pop("_id", None)
+
+    return {
+        "booking": booking
+    }
+
 @app.get("/privacy-policy", response_class=HTMLResponse) #this endpoint serves the privacy policy page for the application
 async def privacy_policy():
     return """
