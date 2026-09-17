@@ -194,7 +194,7 @@ async def poll_gmail_inbox():
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        SCOPES = [
+        scopes = [
             "https://www.googleapis.com/auth/gmail.readonly",
             "https://www.googleapis.com/auth/gmail.send",
             "https://www.googleapis.com/auth/calendar",
