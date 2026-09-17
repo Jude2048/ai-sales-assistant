@@ -40,6 +40,17 @@ Rules:
 - Do not assign a representative.
 - Do not apply business policy.
 
+Service rules:
+- Identify the customer's primary requested service.
+- Choose ONLY one of these exact values:
+  "data analytics"
+  "business intelligence"
+  "dashboard development"
+  "data strategy"
+- If none match, return null.
+- If the customer mentions multiple needs, choose the primary business service that matches the supported list.
+- Do not invent or create new service names.
+
 Conversation:
 {conversation}
 """
