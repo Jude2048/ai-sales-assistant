@@ -1,5 +1,4 @@
 import os
-from unittest import result
 from twilio.rest import Client
 
 
@@ -14,14 +13,14 @@ class WhatsAppAdapter:
 
     def send(self, recipient: str, message: str):
         result = self.client.messages.create(
-        from_=self.from_number,
-        to=recipient,
-        body=message,
-    )
+            from_=self.from_number,
+            to=recipient,
+            body=message,
+        )
 
         print("WHATSAPP MESSAGE SENT:", result.sid)
 
         return {
-        "provider_message_id": result.sid,
-        "status": result.status,
-    }
+            "provider_message_id": result.sid,
+            "status": result.status,
+        }
