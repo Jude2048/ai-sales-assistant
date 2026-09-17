@@ -166,7 +166,7 @@ async def google_login():
         "client_id": os.getenv("GOOGLE_CLIENT_ID"),
         "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI"),
         "response_type": "code",
-        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
+        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar",,
         "access_type": "offline",
         "prompt": "consent",
     }
