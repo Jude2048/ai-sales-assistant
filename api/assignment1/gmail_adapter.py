@@ -13,18 +13,19 @@ class GmailAdapter:
     def _get_service(self):
         token_doc = self.google_tokens.find_one({"provider": "gmail"})
 
-        print("GMAIL TOKEN FIELDS:", list(token_doc.keys()) if token_doc else None)
-
         if not token_doc:
             raise RuntimeError("Gmail OAuth token not found")
 
         creds = Credentials(
-            token_doc["access_token"],
+            token=None,
             refresh_token=token_doc["refresh_token"],
             token_uri="https://oauth2.googleapis.com/token",
             client_id=os.getenv("GOOGLE_CLIENT_ID"),
             client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-            scopes=["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send", ],
+            scopes=[
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.send",
+            ],
         )
 
         return build("gmail", "v1", credentials=creds)
