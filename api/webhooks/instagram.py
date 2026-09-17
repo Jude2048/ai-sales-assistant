@@ -3,8 +3,9 @@ from pydoc import text
 
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
-from api.assignment1.conversation_engine import generate_reply
+from api.assignment1.conversation_engine import generate_reply, qualify_lead
 from api.assignment1.instagram_adapter import InstagramAdapter
+
 
 from shared.mongo import (
     create_lead,
@@ -47,6 +48,9 @@ async def receive_instagram_webhook(request: Request): #this function handles in
 
         sender_id = messaging["sender"]["id"]
         message_data = messaging.get("message", {})
+        if message_data.get("is_echo"):
+            print("INSTAGRAM ECHO IGNORED")
+            return {"status": "ignored_echo"}
         text = message_data.get("text", "")
         provider_message_id = message_data.get("mid")
 
@@ -100,6 +104,9 @@ async def receive_instagram_webhook(request: Request): #this function handles in
         print("Message:", text)
 
         if lead.get("automation_enabled", True):
+            if message_data.get("is_echo"):
+                print("INSTAGRAM ECHO IGNORED")
+                return {"status": "ignored_echo"}
             reply = generate_reply(
                 conversation_id=conversation_id,
                 new_message=text,
@@ -111,7 +118,9 @@ async def receive_instagram_webhook(request: Request): #this function handles in
              recipient=sender_id,
             message=reply,
         )
-        from api.assignment1.conversation_engine import qualify_lead
+        if message_data.get("is_echo"):
+            print("INSTAGRAM ECHO IGNORED")
+            return {"status": "ignored_echo"}
 
         qualification = qualify_lead(
             conversation_id=conversation_id,
