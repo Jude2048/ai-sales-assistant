@@ -60,23 +60,23 @@ def qualify_lead(conversation_id: str, new_message: str) -> dict:
     if result["status"] == "qualified":
         slots = get_booking_slots()
 
-    result["booking_slots"] = [
-        slot.isoformat() for slot in slots
-    ]
+        result["booking_slots"] = [
+            slot.isoformat() for slot in slots
+        ]
 
-    if slots:
-        result["slot_message"] = (
-            "Great, your requirements qualify for a consultation. "
-            "Here are the available times:\n\n"
-            + "\n".join(
-                f"{i + 1}. {slot.strftime('%A, %d %B at %H:%M')}"
-                for i, slot in enumerate(slots)
+        if slots:
+            result["slot_message"] = (
+                "Great, your requirements qualify for a consultation. "
+                "Here are the available times:\n\n"
+                + "\n".join(
+                    f"{i + 1}. {slot.strftime('%A, %d %B at %H:%M')}"
+                    for i, slot in enumerate(slots)
+                )
+                + "\n\nPlease reply with the number of your preferred slot."
             )
-            + "\n\nPlease reply with the number of your preferred slot."
-        )
 
     conversation = get_conversation(conversation_id)
-    
+
     if conversation:
         update_lead(
             conversation["lead_id"],
@@ -104,8 +104,10 @@ def qualify_lead(conversation_id: str, new_message: str) -> dict:
                     }
                 },
             )
+
         if result["status"] == "needs_information":
             result["follow_up"] = qualification_followup(result)
+
     return {
         "facts": facts,
         "qualification": result,
