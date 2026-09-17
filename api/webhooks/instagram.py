@@ -111,7 +111,14 @@ async def receive_instagram_webhook(request: Request): #this function handles in
              recipient=sender_id,
             message=reply,
         )
+        from api.assignment1.conversation_engine import qualify_lead
 
+        qualification = qualify_lead(
+            conversation_id=conversation_id,
+            new_message=text,
+        )
+
+        print("INSTAGRAM QUALIFICATION:", qualification)
         create_message(
             Message(
                 conversation_id=conversation_id,
