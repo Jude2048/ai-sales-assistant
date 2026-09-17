@@ -3,7 +3,7 @@ from pydoc import text
 
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
-from api.assignment1.conversation_engine import generate_reply, qualify_lead, get_selected_booking_slot, is_booking_confirmation, upate_lea
+from api.assignment1.conversation_engine import generate_reply, qualify_lead, get_selected_booking_slot, is_booking_confirmation
 from api.assignment1.instagram_adapter import InstagramAdapter
 from datetime import datetime
 import shared.mongo
