@@ -3,6 +3,7 @@ from urllib.parse import urlencode
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import asyncio
+from api.assignment1.conversation_engine import generate_reply
 from api.webhooks.instagram import router as instagram_router
 from fastapi.responses import HTMLResponse, RedirectResponse
 from api.webhooks.whatsapp import router as whatsapp_router
@@ -25,6 +26,9 @@ from pydantic import BaseModel
 from api.assignment1.instagram_adapter import InstagramAdapter
 from api.assignment1.gmail_adapter import GmailAdapter
 from shared.gemini import generate_response
+from api.assignment1.gmail_adapter import GmailAdapter
+from api.assignment1.conversation_engine import generate_reply
+from email.utils import parseaddr
 import json
     
     
@@ -207,6 +211,9 @@ async def poll_gmail_inbox(): #This function polls the Gmail inbox for new messa
             }
 
             sender = headers.get("From", "")
+            sender_name, sender_email = parseaddr(sender)
+            lead_id = f"email_{sender_email.lower()}"
+            conversation_id = f"email_{item['threadId']}"
             subject = headers.get("Subject", "")
             
             # Get plain-text body
@@ -231,8 +238,8 @@ async def poll_gmail_inbox(): #This function polls the Gmail inbox for new messa
                             ).decode("utf-8", errors="ignore")
                         break
 
-            lead_id = f"email_{sender.lower()}"
-            conversation_id = f"email_{sender.lower()}"
+            lead_id = f"email_{sender_email.lower()}"
+            conversation_id = f"email_{item['threadId']}"
 
             # Create lead
             if not get_lead(lead_id):
@@ -278,6 +285,34 @@ async def poll_gmail_inbox(): #This function polls the Gmail inbox for new messa
                 print("Lead:", lead_id)
                 print("Conversation:", conversation_id)
                 print("Subject:", subject)
+
+                if lead.get("automation_enabled", True):
+                    reply = generate_reply(
+                        conversation_id=conversation_id,
+                        new_message=body,
+                    )
+
+                    adapter = GmailAdapter(google_tokens)
+
+                    adapter.send(
+                        recipient=sender_email,
+                        subject=f"Re: {subject}",
+                        message=reply,
+                    )
+
+                    create_message(
+                         Message(
+                            conversation_id=conversation_id,
+                            lead_id=lead_id,
+                            channel="email",
+                            sender_id="sales_assistant",
+                            direction="outbound",
+                            content=reply,
+                        ).model_dump()
+                    )
+
+                    print("GMAIL AI REPLY SAVED TO MONGODB")
+
 
             messages.append({
                 "id": item["id"],
