@@ -27,8 +27,9 @@ from datetime import datetime
 
 from api.assignment1.calendar_adapter import GoogleCalendarAdapter
 from datetime import datetime
-
+from api.assignment2.routes import router as assignment2_router
 from api.assignment1.booking_service import book_meeting
+
 import json
     
     
@@ -51,7 +52,7 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app after lifespan is defined
 app = FastAPI(title="AI Sales Assistant", lifespan=lifespan)
-
+app.include_router(assignment2_router)
 app.include_router(instagram_router, prefix="/webhooks")
 app.include_router(whatsapp_router, prefix="/webhooks")
 
@@ -333,7 +334,7 @@ async def poll_gmail_inbox():
 
             if selected_slot:
 
-                update_lead(
+                shared.mongo.update_lead(
                     lead_id,
                     {
                         "pending_booking": {
@@ -374,7 +375,7 @@ async def poll_gmail_inbox():
 
                     if booking_result["status"] == "confirmed":
 
-                        update_lead(
+                        shared.mongo.update_lead(
                             lead_id,
                             {
                                 "pending_booking": {
@@ -392,7 +393,7 @@ async def poll_gmail_inbox():
 
                     elif booking_result["status"] == "already_booked":
 
-                        update_lead(
+                        shared.mongo.update_lead(
                             lead_id,
                             {
                                 "pending_booking": {
@@ -407,7 +408,7 @@ async def poll_gmail_inbox():
 
                     else:
 
-                        update_lead(
+                        shared.mongo.update_lead(
                             lead_id,
                             {
                                 "pending_booking": {
