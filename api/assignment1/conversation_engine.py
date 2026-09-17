@@ -1,5 +1,5 @@
 from shared.gemini import generate_response
-from shared.mongo import get_messages, update_lead
+from shared.mongo import get_messages, update_lead, get_conversation    
 from shared.gemini import generate_response, extract_lead_facts
 from api.assignment1.policy import evaluate_lead
 
@@ -53,9 +53,6 @@ def qualify_lead(conversation_id: str, new_message: str) -> dict:
     facts = extract_facts(conversation_id, new_message)
     result = evaluate_lead(facts)
 
-    # Get lead_id from conversation_id
-    from shared.mongo import get_conversation
-
     conversation = get_conversation(conversation_id)
 
     if conversation:
@@ -74,8 +71,31 @@ def qualify_lead(conversation_id: str, new_message: str) -> dict:
                 "qualification_facts": facts,
             },
         )
-
+    if result["status"] == "needs_information":
+        result["follow_up"] = qualification_followup(result)
     return {
         "facts": facts,
         "qualification": result,
     }
+
+def qualification_followup(qualification: dict) -> str:
+    missing = qualification["missing_information"]
+
+    questions = {
+        "business need": "What is the main business problem or goal you want help with?",
+        "company size": "Approximately how many employees does your company have?",
+        "budget": "What budget range have you allocated for this project?",
+    }
+
+    parts = [
+        questions[item]
+        for item in missing
+        if item in questions
+    ]
+
+    if not parts:
+        return "Could you provide a little more information about your requirements?"
+
+    return "To help me understand your requirements, could you tell me:\n\n" + "\n".join(
+        f"- {part}" for part in parts
+    )

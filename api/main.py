@@ -304,6 +304,7 @@ async def poll_gmail_inbox():
                 create_conversation(
                     conversation.model_dump()
                 )
+                
 
             # Save inbound message
             message = Message(
@@ -318,22 +319,38 @@ async def poll_gmail_inbox():
 
             create_message(message.model_dump())
 
+            qualification = qualify_lead(
+                                conversation_id=conversation_id,
+                                new_message=body,
+                            )
+            if qualification["qualification"]["status"] == "needs_information":
+                reply = qualification["qualification"]["follow_up"]
+            else:
+                reply = generate_reply(
+                            conversation_id=conversation_id,
+                            new_message=body,  # Gmail uses body
+                        )
+            
+            print("GMAIL QUALIFICATION:", qualification)
+
             print("EMAIL MESSAGE SAVED TO MONGODB")
             print("Lead:", lead_id)
             print("Conversation:", conversation_id)
             print("Subject:", subject)
 
             # Generate AI reply for new email
-            if lead.get("automation_enabled", True):
+            if not lead.get("automation_enabled", True):
+                print("AUTOMATION DISABLED - HUMAN TAKEOVER")
+                continue
 
-                reply = generate_reply(
+            reply = generate_reply(
                     conversation_id=conversation_id,
                     new_message=body,
                 )
 
-                adapter = GmailAdapter(google_tokens)
+            adapter = GmailAdapter(google_tokens)
 
-                adapter.send(
+            adapter.send(
                     recipient=sender_email,
                     subject=f"Re: {subject}",
                     message=reply,
@@ -341,7 +358,7 @@ async def poll_gmail_inbox():
                     in_reply_to=original_message_id,
                 )
 
-                create_message(
+            create_message(
                     Message(
                         conversation_id=conversation_id,
                         lead_id=lead_id,
@@ -352,7 +369,7 @@ async def poll_gmail_inbox():
                     ).model_dump()
                 )
 
-                print("GMAIL AI REPLY SAVED TO MONGODB")
+            print("GMAIL AI REPLY SAVED TO MONGODB")
 
             messages.append({
                 "id": gmail_message_id,
