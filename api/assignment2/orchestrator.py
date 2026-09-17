@@ -8,6 +8,7 @@ from .agents import (
     run_planning,
     run_review,
 )
+
 from .schemas import (
     AgentHandoff,
     AgentRun,
@@ -16,13 +17,20 @@ from .schemas import (
     PlanningOutput,
     ReviewOutput,
     SourceFact,
-    SourceReference,
 )
-from .store import get_run, save_run
+
+from .store import (
+    get_run,
+    save_run,
+)
 
 
 MAX_REVIEW_ATTEMPTS = 2
 
+
+# =========================================================
+# HELPERS
+# =========================================================
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -38,6 +46,7 @@ def add_step(
     attempt: int,
     input_version: int,
 ) -> AgentStep:
+
     step = AgentStep(
         step_id=new_id("step"),
         run_id=run.run_id,
@@ -54,6 +63,7 @@ def add_step(
     )
 
     run.steps.append(step)
+
     return step
 
 
@@ -62,6 +72,7 @@ def complete_step(
     output_data: dict,
     output_version: int,
 ) -> None:
+
     step.status = "COMPLETED"
     step.output_data = output_data
     step.output_version = output_version
@@ -72,6 +83,7 @@ def fail_step(
     step: AgentStep,
     error: str,
 ) -> None:
+
     step.status = "FAILED"
     step.error = error
     step.completed_at = now_iso()
@@ -81,9 +93,15 @@ def validate_handoff(
     payload: dict,
     required_fields: list[str],
 ) -> tuple[bool, str | None]:
+
     for field in required_fields:
+
         if field not in payload:
-            return False, f"Missing required handoff field: {field}"
+
+            return (
+                False,
+                f"Missing required handoff field: {field}",
+            )
 
     return True, None
 
@@ -111,55 +129,72 @@ def add_handoff(
         input_version=input_version,
         output_version=output_version,
         payload=payload,
-        validation_status="VALID" if valid else "INVALID",
+        validation_status=(
+            "VALID"
+            if valid
+            else "INVALID"
+        ),
     )
 
     run.handoffs.append(handoff)
 
     if not valid:
+
         raise RuntimeError(
-            f"Invalid {from_agent} -> {to_agent} handoff: {error}"
+            f"Invalid handoff "
+            f"{from_agent} -> {to_agent}: {error}"
         )
 
     return handoff
 
 
+# =========================================================
+# SOURCE FACT EXTRACTION
+# =========================================================
+
 def extract_source_facts(
     intake: IntakeOutput,
 ) -> list[SourceFact]:
     """
-    Convert Intake output into persisted source facts.
+    Convert IntakeOutput into persisted SourceFact objects.
 
-    The schema uses fact_id, not id.
+    Uses the actual schemas.py fields:
+    - fact_id
+    - category
+    - content
+    - source_reference
     """
 
     facts: list[SourceFact] = []
 
     for item in intake.decisions:
+
         facts.append(
             SourceFact(
                 fact_id=item.fact_id,
-                fact_type="decision",
+                category="decision",
                 content=item.content,
                 source_reference=item.source_reference,
             )
         )
 
     for item in intake.requirements:
+
         facts.append(
             SourceFact(
                 fact_id=item.fact_id,
-                fact_type="requirement",
+                category="requirement",
                 content=item.content,
                 source_reference=item.source_reference,
             )
         )
 
     for item in intake.constraints:
+
         facts.append(
             SourceFact(
                 fact_id=item.fact_id,
-                fact_type="constraint",
+                category="constraint",
                 content=item.content,
                 source_reference=item.source_reference,
             )
@@ -167,6 +202,10 @@ def extract_source_facts(
 
     return facts
 
+
+# =========================================================
+# CREATE RUN
+# =========================================================
 
 def create_new_run(
     session_id: str,
@@ -193,7 +232,25 @@ def create_new_run(
     )
 
 
-def _latest_completed_step(
+# =========================================================
+# CURRENT SOURCE FACTS
+# =========================================================
+
+def current_source_facts(
+    run: AgentRun,
+) -> list[dict]:
+
+    return [
+        fact.model_dump()
+        for fact in run.source_facts
+    ]
+
+
+# =========================================================
+# FIND CURRENT-VERSION STEPS
+# =========================================================
+
+def latest_completed_step(
     run: AgentRun,
     agent: str,
 ) -> AgentStep | None:
@@ -201,9 +258,11 @@ def _latest_completed_step(
     candidates = [
         step
         for step in run.steps
-        if step.agent == agent
-        and step.status == "COMPLETED"
-        and step.output_version == run.source_version
+        if (
+            step.agent == agent
+            and step.status == "COMPLETED"
+            and step.output_version == run.source_version
+        )
     ]
 
     if not candidates:
@@ -215,26 +274,19 @@ def _latest_completed_step(
     )
 
 
-def _current_source_facts(
-    run: AgentRun,
-) -> list[dict]:
-
-    return [
-        fact.model_dump()
-        for fact in run.source_facts
-    ]
-
-
-def _latest_intake_output(
+def latest_intake_output(
     run: AgentRun,
 ) -> IntakeOutput | None:
 
-    step = _latest_completed_step(
+    step = latest_completed_step(
         run,
         "intake",
     )
 
-    if not step or not step.output_data:
+    if step is None:
+        return None
+
+    if step.output_data is None:
         return None
 
     return IntakeOutput.model_validate(
@@ -242,16 +294,19 @@ def _latest_intake_output(
     )
 
 
-def _latest_planning_output(
+def latest_planning_output(
     run: AgentRun,
 ) -> PlanningOutput | None:
 
-    step = _latest_completed_step(
+    step = latest_completed_step(
         run,
         "planning",
     )
 
-    if not step or not step.output_data:
+    if step is None:
+        return None
+
+    if step.output_data is None:
         return None
 
     return PlanningOutput.model_validate(
@@ -259,22 +314,47 @@ def _latest_planning_output(
     )
 
 
-def _latest_review_output(
+def latest_review_output(
     run: AgentRun,
 ) -> ReviewOutput | None:
 
-    step = _latest_completed_step(
+    step = latest_completed_step(
         run,
         "review",
     )
 
-    if not step or not step.output_data:
+    if step is None:
+        return None
+
+    if step.output_data is None:
         return None
 
     return ReviewOutput.model_validate(
         step.output_data
     )
 
+
+# =========================================================
+# MARK AGENT OUTPUT STALE
+# =========================================================
+
+def mark_agent_stale(
+    run: AgentRun,
+    agent: str,
+) -> None:
+
+    for step in run.steps:
+
+        if (
+            step.agent == agent
+            and step.status == "COMPLETED"
+        ):
+            step.status = "STALE"
+
+
+# =========================================================
+# EXECUTE RUN
+# =========================================================
 
 def execute_run(
     run: AgentRun,
@@ -284,26 +364,13 @@ def execute_run(
     run.status = "RUNNING"
     run.updated_at = now_iso()
 
-    current_version = run.source_version
+    source_version = run.source_version
 
-    # ---------------------------------------------------------
+    # =====================================================
     # 1. INTAKE
-    # ---------------------------------------------------------
-    #
-    # IMPORTANT FIX:
-    #
-    # A completed Intake step is reusable ONLY when its output_version
-    # matches the current source_version.
-    #
-    # Therefore:
-    #
-    # source_version 1 + Intake version 1 -> reuse
-    # source_version 2 + Intake version 1 -> DO NOT reuse
-    #
-    # This is the core stale-context bug fix.
-    # ---------------------------------------------------------
+    # =====================================================
 
-    intake_output = _latest_intake_output(run)
+    intake_output = latest_intake_output(run)
 
     if intake_output is None:
 
@@ -311,46 +378,51 @@ def execute_run(
             run=run,
             agent="intake",
             attempt=1,
-            input_version=current_version,
+            input_version=source_version,
         )
 
         intake_step.input_data = {
             "transcript": run.transcript,
-            "source_version": current_version,
-            "source_facts": _current_source_facts(run),
+            "source_version": source_version,
+            "source_facts": current_source_facts(run),
         }
 
         try:
 
             if run.simulate_failure_at == "intake":
-                raise RuntimeError("SIMULATED MODEL FAILURE")
+
+                raise RuntimeError(
+                    "SIMULATED MODEL FAILURE"
+                )
 
             intake_output = run_intake(
                 transcript=run.transcript,
-                source_facts=_current_source_facts(run),
+                source_facts=current_source_facts(run),
             )
 
             complete_step(
                 step=intake_step,
                 output_data=intake_output.model_dump(),
-                output_version=current_version,
+                output_version=source_version,
             )
 
-            # -------------------------------------------------
-            # Only initialise source facts when this is the
-            # first source version.
+            # Only create initial source facts for version 1.
             #
-            # For a corrected source version, NEVER overwrite
-            # the user's corrected source facts with a fresh
-            # extraction from the old transcript.
-            # -------------------------------------------------
+            # After a user correction, we preserve the corrected
+            # source fact instead of extracting the old transcript
+            # value again.
 
-            if current_version == 1 and not run.source_facts:
+            if (
+                source_version == 1
+                and not run.source_facts
+            ):
+
                 run.source_facts = extract_source_facts(
                     intake_output
                 )
 
         except Exception as exc:
+
             fail_step(
                 intake_step,
                 str(exc),
@@ -358,24 +430,26 @@ def execute_run(
 
             run.status = "FAILED"
             run.updated_at = now_iso()
+
             save_run(run)
+
             return run
 
         save_run(run)
 
-    # ---------------------------------------------------------
-    # 2. INTAKE -> PLANNING HANDOFF
-    # ---------------------------------------------------------
+    # =====================================================
+    # 2. INTAKE -> PLANNING
+    # =====================================================
 
     add_handoff(
         run=run,
         from_agent="intake",
         to_agent="planning",
-        input_version=current_version,
-        output_version=current_version,
+        input_version=source_version,
+        output_version=source_version,
         payload={
-            "source_version": current_version,
-            "source_facts": _current_source_facts(run),
+            "source_version": source_version,
+            "source_facts": current_source_facts(run),
             "intake_output": intake_output.model_dump(),
         },
         required_fields=[
@@ -387,21 +461,11 @@ def execute_run(
 
     save_run(run)
 
-    # ---------------------------------------------------------
-    # 3. PLANNING -> REVIEW LOOP
-    # ---------------------------------------------------------
+    # =====================================================
+    # 3. PLANNING / REVIEW LOOP
+    # =====================================================
 
     corrections: list[dict] = []
-
-    # If we already have a review correction for this source version,
-    # preserve it for resumed/repeated execution.
-    previous_review = _latest_review_output(run)
-
-    if previous_review and previous_review.status == "FAIL":
-        corrections = [
-            correction.model_dump()
-            for correction in previous_review.corrections
-        ]
 
     for attempt in range(
         1,
@@ -410,11 +474,11 @@ def execute_run(
 
         run.review_attempts = attempt
 
-        # -----------------------------------------------------
+        # =================================================
         # PLANNING
-        # -----------------------------------------------------
+        # =================================================
 
-        planning_output = _latest_planning_output(run)
+        planning_output = latest_planning_output(run)
 
         if planning_output is None:
 
@@ -422,12 +486,12 @@ def execute_run(
                 run=run,
                 agent="planning",
                 attempt=attempt,
-                input_version=current_version,
+                input_version=source_version,
             )
 
             planning_step.input_data = {
-                "source_version": current_version,
-                "source_facts": _current_source_facts(run),
+                "source_version": source_version,
+                "source_facts": current_source_facts(run),
                 "intake_output": intake_output.model_dump(),
                 "company_rules": run.company_rules,
                 "corrections": corrections,
@@ -435,10 +499,8 @@ def execute_run(
 
             try:
 
-                if (
-                    run.simulate_failure_at == "planning"
-                    and not resume
-                ):
+                if run.simulate_failure_at == "planning":
+
                     raise RuntimeError(
                         "SIMULATED MODEL FAILURE"
                     )
@@ -447,14 +509,14 @@ def execute_run(
                     transcript=run.transcript,
                     intake=intake_output,
                     company_rules=run.company_rules,
-                    source_facts=_current_source_facts(run),
+                    source_facts=current_source_facts(run),
                     corrections=corrections,
                 )
 
                 complete_step(
                     step=planning_step,
                     output_data=planning_output.model_dump(),
-                    output_version=current_version,
+                    output_version=source_version,
                 )
 
             except Exception as exc:
@@ -466,24 +528,26 @@ def execute_run(
 
                 run.status = "FAILED"
                 run.updated_at = now_iso()
+
                 save_run(run)
+
                 return run
 
             save_run(run)
 
-        # -----------------------------------------------------
-        # PLANNING -> REVIEW HANDOFF
-        # -----------------------------------------------------
+        # =================================================
+        # PLANNING -> REVIEW
+        # =================================================
 
         add_handoff(
             run=run,
             from_agent="planning",
             to_agent="review",
-            input_version=current_version,
-            output_version=current_version,
+            input_version=source_version,
+            output_version=source_version,
             payload={
-                "source_version": current_version,
-                "source_facts": _current_source_facts(run),
+                "source_version": source_version,
+                "source_facts": current_source_facts(run),
                 "intake_output": intake_output.model_dump(),
                 "planning_output": planning_output.model_dump(),
             },
@@ -497,11 +561,11 @@ def execute_run(
 
         save_run(run)
 
-        # -----------------------------------------------------
+        # =================================================
         # REVIEW
-        # -----------------------------------------------------
+        # =================================================
 
-        review_output = _latest_review_output(run)
+        review_output = latest_review_output(run)
 
         if review_output is None:
 
@@ -509,12 +573,12 @@ def execute_run(
                 run=run,
                 agent="review",
                 attempt=attempt,
-                input_version=current_version,
+                input_version=source_version,
             )
 
             review_step.input_data = {
-                "source_version": current_version,
-                "source_facts": _current_source_facts(run),
+                "source_version": source_version,
+                "source_facts": current_source_facts(run),
                 "intake_output": intake_output.model_dump(),
                 "planning_output": planning_output.model_dump(),
                 "company_rules": run.company_rules,
@@ -522,10 +586,8 @@ def execute_run(
 
             try:
 
-                if (
-                    run.simulate_failure_at == "review"
-                    and not resume
-                ):
+                if run.simulate_failure_at == "review":
+
                     raise RuntimeError(
                         "SIMULATED MODEL FAILURE"
                     )
@@ -535,13 +597,13 @@ def execute_run(
                     intake=intake_output,
                     plan=planning_output,
                     company_rules=run.company_rules,
-                    source_facts=_current_source_facts(run),
+                    source_facts=current_source_facts(run),
                 )
 
                 complete_step(
                     step=review_step,
                     output_data=review_output.model_dump(),
-                    output_version=current_version,
+                    output_version=source_version,
                 )
 
             except Exception as exc:
@@ -553,27 +615,30 @@ def execute_run(
 
                 run.status = "FAILED"
                 run.updated_at = now_iso()
+
                 save_run(run)
+
                 return run
 
             save_run(run)
 
-        # -----------------------------------------------------
-        # REVIEW RESULT
-        # -----------------------------------------------------
+        # =================================================
+        # REVIEW PASS
+        # =================================================
 
         if review_output.status == "PASS":
 
-            run.final_plan = planning_output.model_dump()
+            run.final_plan = planning_output
             run.status = "COMPLETED"
             run.updated_at = now_iso()
 
             save_run(run)
+
             return run
 
-        # -----------------------------------------------------
-        # REVIEW FAILED -> PLANNING CORRECTION
-        # -----------------------------------------------------
+        # =================================================
+        # REVIEW FAIL
+        # =================================================
 
         corrections = [
             correction.model_dump()
@@ -584,10 +649,10 @@ def execute_run(
             run=run,
             from_agent="review",
             to_agent="planning",
-            input_version=current_version,
-            output_version=current_version,
+            input_version=source_version,
+            output_version=source_version,
             payload={
-                "source_version": current_version,
+                "source_version": source_version,
                 "corrections": corrections,
             },
             required_fields=[
@@ -598,58 +663,46 @@ def execute_run(
 
         save_run(run)
 
-        # We deliberately continue to the next attempt.
-        #
-        # The next Planning call gets:
-        # - current source facts
-        # - current Intake
-        # - review corrections
-        #
-        # Therefore the correction is a real agent-to-agent loop.
+        # No more attempts available.
 
         if attempt >= MAX_REVIEW_ATTEMPTS:
+
             run.status = "UNRESOLVED"
-            run.final_plan = planning_output.model_dump()
+            run.final_plan = planning_output
             run.updated_at = now_iso()
+
             save_run(run)
+
             return run
 
-        # -----------------------------------------------------
-        # IMPORTANT:
-        #
-        # Remove nothing from the audit trail.
-        #
-        # We need the next Planning attempt to be a NEW step.
-        # -----------------------------------------------------
+        # Force the next attempt to create fresh
+        # Planning + Review steps.
 
-        # Mark the current Planning output as stale for the next
-        # correction attempt so _latest_planning_output() does not
-        # reuse it.
-        for step in run.steps:
-            if (
-                step.agent == "planning"
-                and step.output_version == current_version
-                and step.status == "COMPLETED"
-            ):
-                step.status = "STALE"
+        mark_agent_stale(
+            run,
+            "planning",
+        )
 
-        # Same for Review, so the next attempt gets a new Review call.
-        for step in run.steps:
-            if (
-                step.agent == "review"
-                and step.output_version == current_version
-                and step.status == "COMPLETED"
-            ):
-                step.status = "STALE"
+        mark_agent_stale(
+            run,
+            "review",
+        )
 
         save_run(run)
 
+    # Safety fallback.
+
     run.status = "UNRESOLVED"
     run.updated_at = now_iso()
+
     save_run(run)
 
     return run
 
+
+# =========================================================
+# START RUN
+# =========================================================
 
 def start_run(
     session_id: str,
@@ -670,6 +723,10 @@ def start_run(
     return execute_run(run)
 
 
+# =========================================================
+# RESUME RUN
+# =========================================================
+
 def resume_run(
     run_id: str,
     session_id: str,
@@ -680,11 +737,15 @@ def resume_run(
         session_id=session_id,
     )
 
-    if not run:
-        raise ValueError("Run not found.")
+    if run is None:
 
-    # The simulated failure flag is intentionally cleared so
-    # resume performs the failed operation normally.
+        raise ValueError(
+            "Run not found."
+        )
+
+    # Clear simulated failure so the failed operation
+    # can execute normally on resume.
+
     run.simulate_failure_at = None
 
     return execute_run(

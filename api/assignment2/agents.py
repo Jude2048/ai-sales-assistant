@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Type
 
 from google import genai
 from pydantic import BaseModel
@@ -14,7 +13,10 @@ from .schemas import (
 )
 
 
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+MODEL_NAME = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.1-flash-lite",
+)
 
 _client: genai.Client | None = None
 
@@ -26,17 +28,22 @@ def get_client() -> genai.Client:
         api_key = os.getenv("GEMINI_API_KEY")
 
         if not api_key:
-            raise RuntimeError("GEMINI_API_KEY is not configured.")
+            raise RuntimeError(
+                "GEMINI_API_KEY is not configured."
+            )
 
-        _client = genai.Client(api_key=api_key)
+        _client = genai.Client(
+            api_key=api_key
+        )
 
     return _client
 
 
 def call_llm(
     prompt: str,
-    response_schema: Type[BaseModel],
+    response_schema: type[BaseModel],
 ) -> BaseModel:
+
     client = get_client()
 
     response = client.models.generate_content(
@@ -50,10 +57,13 @@ def call_llm(
     )
 
     if not response.text:
-        raise RuntimeError("LLM returned an empty response.")
+        raise RuntimeError(
+            "LLM returned an empty response."
+        )
 
     try:
         data = json.loads(response.text)
+
     except json.JSONDecodeError as exc:
         raise RuntimeError(
             f"LLM returned invalid JSON: {exc}"
@@ -62,13 +72,12 @@ def call_llm(
     return response_schema.model_validate(data)
 
 
-def _format_source_facts(source_facts: list[dict]) -> str:
-    """
-    Format the persisted source facts so every downstream agent sees
-    the CURRENT source version, including user-corrected facts.
-    """
+def format_source_facts(
+    source_facts: list[dict],
+) -> str:
+
     if not source_facts:
-        return "No persisted source facts are available."
+        return "No corrected source facts are currently available."
 
     return json.dumps(
         source_facts,
@@ -77,54 +86,61 @@ def _format_source_facts(source_facts: list[dict]) -> str:
     )
 
 
+# =========================================================
+# INTAKE AGENT
+# =========================================================
+
 def run_intake(
     transcript: str,
     source_facts: list[dict] | None = None,
 ) -> IntakeOutput:
-    """
-    Intake Agent.
 
-    The original transcript remains the source document.
-
-    source_facts represents the current authoritative structured
-    source context. If a user corrected a fact, that corrected fact
-    must override the previous extracted value.
-    """
-
-    current_facts = source_facts or []
+    current_source_facts = source_facts or []
 
     prompt = f"""
-You are the Intake Agent in a three-agent operations coordination system.
+You are the Intake Agent.
 
-Your job is to extract grounded information from the meeting transcript.
+Extract structured information from the meeting transcript.
 
-You must identify:
-- decisions
-- requirements
-- constraints
-- missing information
-- conflicting information
+Identify:
+
+1. Decisions
+2. Requirements
+3. Constraints
+4. Missing information
+5. Conflicts
+
+Ground everything in the provided evidence.
 
 Rules:
-1. Do not invent owners.
-2. Do not invent deadlines.
-3. Do not invent requirements.
-4. Every extracted fact must have a source reference where possible.
-5. Clearly flag missing or conflicting information.
-6. The original transcript is preserved as the source document.
-7. The CURRENT SOURCE FACTS below are authoritative structured context.
-8. If a current source fact differs from the original transcript because of
-   a user correction, use the corrected value as authoritative.
-9. Do not silently revert a corrected fact back to the old transcript value.
-10. Preserve uncertainty rather than making assumptions.
+
+- Do not invent owners.
+- Do not invent deadlines.
+- Do not invent requirements.
+- Every decision, requirement, and constraint must contain a source reference.
+- Clearly identify missing information.
+- Clearly identify conflicts.
+- Do not turn recommendations into facts.
+
+IMPORTANT SOURCE-VERSION RULE:
+
+The original transcript is preserved unchanged.
+
+The CURRENT SOURCE FACTS represent the authoritative structured
+source context.
+
+If a current source fact differs from the original transcript,
+treat the current source fact as the corrected authoritative value.
+
+Do NOT revert a corrected fact back to the old transcript value.
 
 ORIGINAL MEETING TRANSCRIPT:
 {transcript}
 
 CURRENT SOURCE FACTS:
-{_format_source_facts(current_facts)}
+{format_source_facts(current_source_facts)}
 
-Return only the structured IntakeOutput schema.
+Return only the IntakeOutput schema.
 """
 
     return call_llm(
@@ -133,6 +149,10 @@ Return only the structured IntakeOutput schema.
     )
 
 
+# =========================================================
+# PLANNING AGENT
+# =========================================================
+
 def run_planning(
     transcript: str,
     intake: IntakeOutput,
@@ -140,62 +160,75 @@ def run_planning(
     source_facts: list[dict] | None = None,
     corrections: list[dict] | None = None,
 ) -> PlanningOutput:
-    """
-    Planning Agent.
 
-    Consumes the CURRENT source facts plus the current Intake output.
-    """
-
-    current_facts = source_facts or []
+    current_source_facts = source_facts or []
     review_corrections = corrections or []
 
     prompt = f"""
-You are the Planning Agent in a three-agent operations coordination system.
+You are the Planning Agent.
 
-Your job is to convert the Intake Agent's structured information into
-an actionable plan.
+Create an actionable operations plan using:
 
-You must propose:
-- tasks
-- owners where supported
-- deadlines where supported
+- the Intake Agent output
+- the CURRENT SOURCE FACTS
+- the company rules
+- any Review Agent corrections
+
+Each task may contain:
+
+- task_id
+- task
+- owner
+- deadline
 - dependencies
-- the basis for each important planning decision
+- basis
 
-IMPORTANT:
-The CURRENT SOURCE FACTS are authoritative.
+The basis must distinguish between:
 
-If a source fact was corrected by the user, the corrected value must be
-used in the plan. Never use a stale value from an earlier agent output.
+- supported_fact
+- company_rule
+- recommendation
+- unresolved
 
 Rules:
-1. Do not present unsupported assumptions as facts.
-2. Do not invent owners.
-3. Do not invent meeting-supported deadlines.
-4. Company rules may create planning requirements, but distinguish those
-   from facts stated in the meeting.
-5. If company rules conflict with meeting facts, explicitly represent
-   the conflict and recommend clarification where appropriate.
-6. Incorporate Review Agent corrections.
-7. Keep facts, recommendations, and unresolved questions distinguishable.
-8. Dependencies should be included where they are logically required.
+
+- Do not invent owners.
+- Do not invent meeting deadlines.
+- Do not invent requirements.
+- A company rule can influence a recommendation, but must not be
+  presented as a meeting fact.
+- If the meeting and company rules conflict, explicitly represent
+  the conflict.
+- Incorporate Review Agent corrections.
+- Use CURRENT SOURCE FACTS as authoritative.
+- A user-corrected source fact overrides the stale value from an
+  earlier agent output.
+- Keep unresolved questions explicit.
 
 ORIGINAL MEETING TRANSCRIPT:
 {transcript}
 
 CURRENT SOURCE FACTS:
-{_format_source_facts(current_facts)}
+{format_source_facts(current_source_facts)}
 
 INTAKE AGENT OUTPUT:
-{json.dumps(intake.model_dump(), indent=2, ensure_ascii=False)}
+{json.dumps(
+    intake.model_dump(),
+    indent=2,
+    ensure_ascii=False,
+)}
 
 COMPANY RULES:
 {company_rules}
 
-REVIEW CORRECTIONS FROM PREVIOUS ATTEMPTS:
-{json.dumps(review_corrections, indent=2, ensure_ascii=False)}
+REVIEW AGENT CORRECTIONS:
+{json.dumps(
+    review_corrections,
+    indent=2,
+    ensure_ascii=False,
+)}
 
-Return only the structured PlanningOutput schema.
+Return only the PlanningOutput schema.
 """
 
     return call_llm(
@@ -204,6 +237,10 @@ Return only the structured PlanningOutput schema.
     )
 
 
+# =========================================================
+# REVIEW AGENT
+# =========================================================
+
 def run_review(
     transcript: str,
     intake: IntakeOutput,
@@ -211,69 +248,82 @@ def run_review(
     company_rules: str,
     source_facts: list[dict] | None = None,
 ) -> ReviewOutput:
-    """
-    Review Agent.
 
-    Checks the current plan against:
-    - original transcript
-    - current corrected source facts
-    - Intake output
-    - company rules
-    """
-
-    current_facts = source_facts or []
+    current_source_facts = source_facts or []
 
     prompt = f"""
-You are the Review Agent in a three-agent operations coordination system.
+You are the Review Agent.
 
-Your job is to verify whether the Planning Agent's plan is grounded
-and compliant.
+Review the Planning Agent's proposed plan against:
 
-Check:
+1. The original meeting transcript
+2. The CURRENT SOURCE FACTS
+3. The Intake Agent output
+4. The company rules
+
+Check for:
+
 - unsupported owners
 - unsupported deadlines
 - invented requirements
 - missing requirements
-- conflicts with the source facts
-- company-rule violations
+- conflicts with current source facts
+- company rule violations
 - missing dependencies
-- incorrect treatment of facts versus recommendations
+- incorrect basis classification
 - unresolved source conflicts
 
 IMPORTANT:
-The CURRENT SOURCE FACTS are authoritative.
 
-A user correction represents the current intended source fact.
-The original transcript must remain unchanged, but the corrected fact
-must be used when evaluating the plan.
+CURRENT SOURCE FACTS are authoritative.
 
-If the plan is incorrect:
-- return FAIL
-- identify the exact problem
-- provide a specific correction for the Planning Agent
+If a source fact has been corrected by the user,
+the corrected value must be used when reviewing the plan.
 
-If the plan is acceptable:
-- return PASS
-- corrections should be empty
+The original transcript remains unchanged for audit purposes.
 
-Do not approve a plan merely because an earlier agent produced it.
+If the plan has a problem:
+
+Return:
+
+status = FAIL
+
+and provide a specific correction for the Planning Agent.
+
+If the plan is valid:
+
+Return:
+
+status = PASS
+
+and an empty corrections list.
+
+Do not approve a plan simply because an earlier agent produced it.
 
 ORIGINAL MEETING TRANSCRIPT:
 {transcript}
 
 CURRENT SOURCE FACTS:
-{_format_source_facts(current_facts)}
+{format_source_facts(current_source_facts)}
 
 INTAKE AGENT OUTPUT:
-{json.dumps(intake.model_dump(), indent=2, ensure_ascii=False)}
+{json.dumps(
+    intake.model_dump(),
+    indent=2,
+    ensure_ascii=False,
+)}
 
 PLANNING AGENT OUTPUT:
-{json.dumps(plan.model_dump(), indent=2, ensure_ascii=False)}
+{json.dumps(
+    plan.model_dump(),
+    indent=2,
+    ensure_ascii=False,
+)}
 
 COMPANY RULES:
 {company_rules}
 
-Return only the structured ReviewOutput schema.
+Return only the ReviewOutput schema.
 """
 
     return call_llm(

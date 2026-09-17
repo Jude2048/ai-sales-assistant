@@ -14,7 +14,10 @@ from .orchestrator import (
     resume_run,
 )
 
-from .store import get_run
+from .store import (
+    get_run,
+    save_run,
+)
 
 
 router = APIRouter(
@@ -23,12 +26,17 @@ router = APIRouter(
 )
 
 
-# ---------------------------------------------------------
-# START NEW RUN
-# ---------------------------------------------------------
+# =========================================================
+# START RUN
+# =========================================================
 
-@router.post("/runs", response_model=AgentRun)
-def start_assignment2_run(request: RunRequest):
+@router.post(
+    "/runs",
+    response_model=AgentRun,
+)
+def start_assignment2_run(
+    request: RunRequest,
+):
 
     try:
 
@@ -49,11 +57,14 @@ def start_assignment2_run(request: RunRequest):
         )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # GET RUN
-# ---------------------------------------------------------
+# =========================================================
 
-@router.get("/runs/{run_id}", response_model=AgentRun)
+@router.get(
+    "/runs/{run_id}",
+    response_model=AgentRun,
+)
 def get_assignment2_run(
     run_id: str,
     session_id: str = "demo-session",
@@ -74,11 +85,14 @@ def get_assignment2_run(
     return run
 
 
-# ---------------------------------------------------------
+# =========================================================
 # RESUME RUN
-# ---------------------------------------------------------
+# =========================================================
 
-@router.post("/runs/resume", response_model=AgentRun)
+@router.post(
+    "/runs/resume",
+    response_model=AgentRun,
+)
 def resume_assignment2_run(
     request: ResumeRequest,
 ):
@@ -107,11 +121,13 @@ def resume_assignment2_run(
         )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # CORRECT SOURCE FACT
-# ---------------------------------------------------------
+# =========================================================
 
-@router.post("/runs/correct-fact")
+@router.post(
+    "/runs/correct-fact",
+)
 def correct_assignment2_fact(
     request: FactCorrectionRequest,
 ):
@@ -137,6 +153,7 @@ def correct_assignment2_fact(
             fact.content = request.new_content
 
             found = True
+
             break
 
     if not found:
@@ -146,15 +163,11 @@ def correct_assignment2_fact(
             detail="Source fact not found.",
         )
 
-    # -----------------------------------------------------
-    # Move to the next source version ONCE.
-    # -----------------------------------------------------
+    # Move exactly one source version forward.
 
     run.source_version += 1
 
-    # -----------------------------------------------------
-    # Previous outputs are now stale.
-    # -----------------------------------------------------
+    # Previous agent outputs are now stale.
 
     run.review_attempts = 0
     run.final_plan = None
@@ -163,9 +176,8 @@ def correct_assignment2_fact(
     for step in run.steps:
 
         if step.status == "COMPLETED":
-            step.status = "STALE"
 
-    from .store import save_run
+            step.status = "STALE"
 
     save_run(run)
 
