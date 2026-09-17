@@ -130,8 +130,7 @@ def extract_source_facts(
     """
     Convert Intake output into persisted source facts.
 
-    This is only used when a new Intake result is generated.
-    Existing user-corrected source facts are preserved separately.
+    The schema uses fact_id, not id.
     """
 
     facts: list[SourceFact] = []
@@ -139,7 +138,7 @@ def extract_source_facts(
     for item in intake.decisions:
         facts.append(
             SourceFact(
-                fact_id=item.id,
+                fact_id=item.fact_id,
                 fact_type="decision",
                 content=item.content,
                 source_reference=item.source_reference,
@@ -149,7 +148,7 @@ def extract_source_facts(
     for item in intake.requirements:
         facts.append(
             SourceFact(
-                fact_id=item.id,
+                fact_id=item.fact_id,
                 fact_type="requirement",
                 content=item.content,
                 source_reference=item.source_reference,
@@ -159,7 +158,7 @@ def extract_source_facts(
     for item in intake.constraints:
         facts.append(
             SourceFact(
-                fact_id=item.id,
+                fact_id=item.fact_id,
                 fact_type="constraint",
                 content=item.content,
                 source_reference=item.source_reference,
