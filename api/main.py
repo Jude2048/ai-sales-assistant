@@ -19,6 +19,7 @@ from shared.mongo import (
     get_lead,
     get_conversation,
     messages_collection,
+    google_tokens_collection,
 )
 from shared.schemas import Lead, Conversation, Message
 from api.assignment1.whatsapp_adapter import WhatsAppAdapter
@@ -33,7 +34,9 @@ from api.assignment1.conversation_engine import qualify_lead
 from datetime import datetime
 
 from api.assignment1.calendar_adapter import GoogleCalendarAdapter
+from datetime import datetime
 
+from api.assignment1.booking_service import book_meeting
 import json
     
     
@@ -444,6 +447,20 @@ async def debug_calendar_availability():
         "busy": busy,
     }
 
+@app.post("/debug/calendar/book")
+async def debug_calendar_book():
+    result = book_meeting(
+        lead_id="test_lead",
+        conversation_id="test_conversation",
+        attendee_email="judesilveira1@gmail.com",
+        start_time=datetime.fromisoformat(
+            "2026-09-18T10:00:00+01:00"
+        ),
+        duration_minutes=30,
+        google_tokens_collection=google_tokens_collection,
+    )
+
+    return result
 
 @app.get("/privacy-policy", response_class=HTMLResponse) #this endpoint serves the privacy policy page for the application
 async def privacy_policy():

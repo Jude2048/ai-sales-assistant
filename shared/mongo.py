@@ -12,6 +12,10 @@ leads_collection = db["leads"]
 conversations_collection = db["conversations"]
 messages_collection = db["messages"]
 bookings_collection = db["bookings"]
+bookings_collection.create_index(
+    "idempotency_key",
+    unique=True
+)
 google_tokens_collection = db["google_tokens"]
 
 def create_lead(lead: dict):
@@ -53,6 +57,7 @@ def get_messages(conversation_id: str):
 def get_booking_by_idempotency_key(idempotency_key: str):
     return bookings_collection.find_one({
         "idempotency_key": idempotency_key
+
     })
 
 

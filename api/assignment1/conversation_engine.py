@@ -1,7 +1,11 @@
 from shared.gemini import generate_response
-from shared.mongo import get_messages, update_lead, get_conversation    
+from shared.mongo import get_messages, update_lead, get_conversation, google_tokens_collection  
 from shared.gemini import generate_response, extract_lead_facts
 from api.assignment1.policy import evaluate_lead
+from datetime import datetime, timedelta
+from api.assignment1.calendar_adapter import GoogleCalendarAdapter
+
+
 
 def extract_facts(conversation_id: str, new_message: str) -> dict:
     history = get_messages(conversation_id)
@@ -53,6 +57,12 @@ def qualify_lead(conversation_id: str, new_message: str) -> dict:
     facts = extract_facts(conversation_id, new_message)
     result = evaluate_lead(facts)
 
+    if result["status"] == "qualified":
+        slots = get_booking_slots()
+        result["booking_slots"] = [
+            slot.isoformat() for slot in slots
+        ]
+
     conversation = get_conversation(conversation_id)
 
     if conversation:
@@ -71,8 +81,18 @@ def qualify_lead(conversation_id: str, new_message: str) -> dict:
                 "qualification_facts": facts,
             },
         )
-    if result["status"] == "needs_information":
-        result["follow_up"] = qualification_followup(result)
+
+        if result["status"] == "qualified" and result.get("booking_slots"):
+            update_lead(
+                conversation["lead_id"],
+                {
+                    "pending_booking": {
+                        "slots": result["booking_slots"],
+                        "status": "awaiting_selection",
+                    }
+                },
+            )
+
     return {
         "facts": facts,
         "qualification": result,
@@ -99,3 +119,53 @@ def qualification_followup(qualification: dict) -> str:
     return "To help me understand your requirements, could you tell me:\n\n" + "\n".join(
         f"- {part}" for part in parts
     )
+
+def is_booking_confirmation(message: str) -> bool:
+    text = message.lower().strip()
+
+    confirmations = [
+        "yes",
+        "yes please",
+        "confirm",
+        "confirmed",
+        "book it",
+        "book that",
+        "that works",
+        "that time works",
+    ]
+
+    return text in confirmations
+
+def get_booking_slots():
+    calendar = GoogleCalendarAdapter(google_tokens_collection)
+
+    now = datetime.now().astimezone()
+    start_date = now.date()
+
+    slots = []
+
+    for day_offset in range(7):
+        date = start_date + timedelta(days=day_offset)
+
+        for hour in range(9, 17):
+            start_time = datetime(
+                date.year,
+                date.month,
+                date.day,
+                hour,
+                0,
+                tzinfo=now.tzinfo
+            )
+
+            end_time = start_time + timedelta(minutes=30)
+
+            if start_time <= now:
+                continue
+
+            if calendar.is_available(start_time, end_time):
+                slots.append(start_time)
+
+            if len(slots) >= 3:
+                return slots
+
+    return slots

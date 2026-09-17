@@ -33,24 +33,25 @@ async def verify_instagram_webhook(
     return "Verification failed"
 
 
-@router.post("/instagram") #endpoint for receiving Instagram webhook events
-async def receive_instagram_webhook(request: Request): #this function handles incoming POST requests from Instagram's webhook
+@router.post("/instagram")
+async def receive_instagram_webhook(request: Request):
     payload = await request.json()
 
     print("Instagram webhook received:")
     print(payload)
 
-    # Temporary extraction — we'll adapt this to the exact
-    # Meta payload after testing with a real message.
     try:
         entry = payload["entry"][0]
         messaging = entry["messaging"][0]
 
         sender_id = str(messaging["sender"]["id"])
         message_data = messaging.get("message", {})
+
+        # Ignore Instagram echo messages
         if message_data.get("is_echo"):
             print("INSTAGRAM ECHO IGNORED")
             return {"status": "ignored_echo"}
+
         text = message_data.get("text", "")
         provider_message_id = message_data.get("mid")
 
@@ -72,6 +73,7 @@ async def receive_instagram_webhook(request: Request): #this function handles in
             )
 
             create_lead(lead_obj.model_dump())
+            lead = lead_obj.model_dump()
 
         # Create conversation if it doesn't exist
         conversation = get_conversation(conversation_id)
@@ -86,7 +88,7 @@ async def receive_instagram_webhook(request: Request): #this function handles in
 
             create_conversation(conversation_obj.model_dump())
 
-        # Save message
+        # Save inbound message
         message_obj = Message(
             conversation_id=conversation_id,
             lead_id=lead_id,
@@ -98,42 +100,54 @@ async def receive_instagram_webhook(request: Request): #this function handles in
         )
 
         create_message(message_obj.model_dump())
+
         print("INSTAGRAM MESSAGE SAVED TO MONGODB")
         print("Lead:", lead_id)
         print("Conversation:", conversation_id)
         print("Message:", text)
 
-        if lead.get("automation_enabled", True):
-            if message_data.get("is_echo"):
-                print("INSTAGRAM ECHO IGNORED")
-                return {"status": "ignored_echo"}
-            reply = generate_reply(
-                conversation_id=conversation_id,
-                new_message=text,
-            )
+        # Human takeover check
+        if not lead.get("automation_enabled", True):
+            print("INSTAGRAM AUTOMATION DISABLED")
+            return {
+                "status": "received",
+                "saved": True,
+                "automation": "disabled",
+            }
 
-            adapter = InstagramAdapter()
-
-            adapter.send(
-             recipient=sender_id,
-            message=reply,
-        )
-        if message_data.get("is_echo"):
-            print("INSTAGRAM ECHO IGNORED")
-            return {"status": "ignored_echo"}
-
+        # Qualification FIRST
         qualification = qualify_lead(
             conversation_id=conversation_id,
             new_message=text,
         )
 
         print("INSTAGRAM QUALIFICATION:", qualification)
+
+        # Generate appropriate reply
+        if qualification["qualification"]["status"] == "needs_information":
+            reply = qualification["qualification"]["follow_up"]
+
+        else:
+            reply = generate_reply(
+                conversation_id=conversation_id,
+                new_message=text,
+            )
+
+        # Send reply
+        adapter = InstagramAdapter()
+
+        adapter.send(
+            recipient=sender_id,
+            message=reply,
+        )
+
+        # Save outbound message
         create_message(
             Message(
                 conversation_id=conversation_id,
                 lead_id=lead_id,
                 channel="instagram",
-                sender_id=17841423916787536,  # Instagram Business Account ID
+                sender_id=17841423916787536,
                 direction="outbound",
                 content=reply,
             ).model_dump()
@@ -150,6 +164,7 @@ async def receive_instagram_webhook(request: Request): #this function handles in
 
     except Exception as e:
         print("Instagram persistence error:", str(e))
+
         return {
             "status": "received",
             "saved": False,

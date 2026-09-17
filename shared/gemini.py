@@ -9,9 +9,19 @@ client = genai.Client(
 
 
 def generate_response(prompt: str) -> str:
+    system_rules = """
+IMPORTANT RULES:
+- You are an AI sales assistant.
+- NEVER book, create, cancel, or modify a calendar event.
+- NEVER claim that a meeting has been booked or confirmed.
+- You may discuss available meeting slots.
+- You may ask the customer to select or explicitly confirm a slot.
+- Actual calendar booking is performed ONLY by the backend application.
+"""
+
     response = client.models.generate_content(
         model="gemini-3.1-flash-lite",
-        contents=prompt,
+        contents=system_rules + "\n\n" + prompt,
     )
 
     return response.text
