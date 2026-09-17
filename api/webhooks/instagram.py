@@ -46,7 +46,7 @@ async def receive_instagram_webhook(request: Request): #this function handles in
         entry = payload["entry"][0]
         messaging = entry["messaging"][0]
 
-        sender_id = messaging["sender"]["id"]
+        sender_id = str(messaging["sender"]["id"])
         message_data = messaging.get("message", {})
         if message_data.get("is_echo"):
             print("INSTAGRAM ECHO IGNORED")
