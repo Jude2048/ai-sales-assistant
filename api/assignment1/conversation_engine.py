@@ -1,5 +1,5 @@
 from shared.gemini import generate_response
-from shared.mongo import get_messages
+from shared.mongo import get_messages, update_lead
 from shared.gemini import generate_response, extract_lead_facts
 from api.assignment1.policy import evaluate_lead
 
@@ -52,6 +52,28 @@ def generate_reply(conversation_id: str, new_message: str) -> str:
 def qualify_lead(conversation_id: str, new_message: str) -> dict:
     facts = extract_facts(conversation_id, new_message)
     result = evaluate_lead(facts)
+
+    # Get lead_id from conversation_id
+    from shared.mongo import get_conversation
+
+    conversation = get_conversation(conversation_id)
+
+    if conversation:
+        update_lead(
+            conversation["lead_id"],
+            {
+                "status": result["status"],
+                "qualification": {
+                    "status": result["status"],
+                    "evidence": result["evidence"],
+                },
+                "assignment": {
+                    "representative": result["representative"],
+                    "reason": result["reason"],
+                },
+                "qualification_facts": facts,
+            },
+        )
 
     return {
         "facts": facts,
