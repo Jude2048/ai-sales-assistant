@@ -115,14 +115,17 @@ class AgentStep(BaseModel):
     attempt: int
 
     input_version: int
-    output_version: Optional[int] = None
+    output_version: int | None = None
 
     status: StepStatus
 
     input_data: dict = Field(default_factory=dict)
-    output_data: dict = Field(default_factory=dict)
+    output_data: dict | None = None
 
-    error: Optional[str] = None
+    error: str | None = None
+
+    created_at: str
+    completed_at: str | None = None
 
 
 class AgentHandoff(BaseModel):
