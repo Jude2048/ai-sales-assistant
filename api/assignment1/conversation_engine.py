@@ -64,7 +64,7 @@ def qualify_lead(conversation_id: str, new_message: str) -> dict:
         ]
 
     conversation = get_conversation(conversation_id)
-
+    
     if conversation:
         update_lead(
             conversation["lead_id"],
@@ -92,7 +92,8 @@ def qualify_lead(conversation_id: str, new_message: str) -> dict:
                     }
                 },
             )
-
+        if result["status"] == "needs_information":
+            result["follow_up"] = qualification_followup(result)
     return {
         "facts": facts,
         "qualification": result,
