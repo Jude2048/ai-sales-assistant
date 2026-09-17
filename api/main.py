@@ -173,11 +173,14 @@ async def google_login():
 async def gmail_inbox(): #Returns the latest 10 emails from the Gmail inbox and saves them to MongoDB if they are new
     return await poll_gmail_inbox() 
 
-async def poll_gmail_inbox(): #This function polls the Gmail inbox for new messages and saves them to MongoDB if they are new
+async def poll_gmail_inbox():
     token_doc = google_tokens.find_one({"provider": "gmail"})
 
     if not token_doc:
-        return {"gmail_connected": False, "error": "No refresh token"}
+        return {
+            "gmail_connected": False,
+            "error": "No refresh token"
+        }
 
     creds = Credentials(
         token=None,
@@ -185,11 +188,18 @@ async def poll_gmail_inbox(): #This function polls the Gmail inbox for new messa
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+        scopes=[
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.send",
+        ],
     )
 
     try:
-        service = build("gmail", "v1", credentials=creds)
+        service = build(
+            "gmail",
+            "v1",
+            credentials=creds
+        )
 
         result = service.users().messages().list(
             userId="me",
@@ -199,9 +209,21 @@ async def poll_gmail_inbox(): #This function polls the Gmail inbox for new messa
         messages = []
 
         for item in result.get("messages", []):
+
+            gmail_message_id = item["id"]
+
+            # Skip emails already processed
+            existing_message = messages_collection.find_one({
+                "channel": "email",
+                "provider_message_id": gmail_message_id,
+            })
+
+            if existing_message:
+                continue
+
             msg = service.users().messages().get(
                 userId="me",
-                id=item["id"],
+                id=gmail_message_id,
                 format="full"
             ).execute()
 
@@ -212,110 +234,119 @@ async def poll_gmail_inbox(): #This function polls the Gmail inbox for new messa
 
             sender = headers.get("From", "")
             sender_name, sender_email = parseaddr(sender)
-            lead_id = f"email_{sender_email.lower()}"
-            conversation_id = f"email_{item['threadId']}"
             subject = headers.get("Subject", "")
-            
-            # Get plain-text body
+
+            # Extract plain-text body
             body = ""
 
             payload = msg.get("payload", {})
 
             if payload.get("body", {}).get("data"):
                 import base64
+
                 body = base64.urlsafe_b64decode(
                     payload["body"]["data"]
                 ).decode("utf-8", errors="ignore")
 
             elif payload.get("parts"):
                 for part in payload["parts"]:
+
                     if part.get("mimeType") == "text/plain":
+
                         data = part.get("body", {}).get("data")
+
                         if data:
                             import base64
+
                             body = base64.urlsafe_b64decode(
                                 data
                             ).decode("utf-8", errors="ignore")
+
                         break
 
             lead_id = f"email_{sender_email.lower()}"
             conversation_id = f"email_{item['threadId']}"
 
-            # Create lead
-            if not get_lead(lead_id):
+            # Get or create lead
+            lead = get_lead(lead_id)
+
+            if not lead:
                 lead = Lead(
                     lead_id=lead_id,
                     channel="email",
-                    sender_id=sender,
+                    sender_id=sender_email,
+                    sender_name=sender_name or None,
                 )
+
                 create_lead(lead.model_dump())
 
-            # Create conversation
-            if not get_conversation(conversation_id):
+                # Mongo now has the same structure
+                lead = lead.model_dump()
+
+            # Get or create conversation
+            conversation = get_conversation(conversation_id)
+
+            if not conversation:
                 conversation = Conversation(
                     conversation_id=conversation_id,
                     lead_id=lead_id,
                     channel="email",
-                    sender_id=sender,
+                    sender_id=sender_email,
                 )
-                create_conversation(conversation.model_dump())
 
-            # Avoid saving the same email twice
-            existing_messages = list(
-                messages_collection.find({
-                    "conversation_id": conversation_id,
-                    "provider_message_id": item["id"]
-                })
+                create_conversation(
+                    conversation.model_dump()
+                )
+
+            # Save inbound message
+            message = Message(
+                conversation_id=conversation_id,
+                lead_id=lead_id,
+                channel="email",
+                sender_id=sender_email,
+                direction="inbound",
+                content=f"Subject: {subject}\n\n{body}",
+                provider_message_id=gmail_message_id,
             )
 
-            if not existing_messages:
-                message = Message(
+            create_message(message.model_dump())
+
+            print("EMAIL MESSAGE SAVED TO MONGODB")
+            print("Lead:", lead_id)
+            print("Conversation:", conversation_id)
+            print("Subject:", subject)
+
+            # Generate AI reply for new email
+            if lead.get("automation_enabled", True):
+
+                reply = generate_reply(
                     conversation_id=conversation_id,
-                    lead_id=lead_id,
-                    channel="email",
-                    sender_id=sender,
-                    direction="inbound",
-                    content=f"Subject: {subject}\n\n{body}",
-                    provider_message_id=item["id"],
+                    new_message=body,
                 )
 
-                create_message(message.model_dump())
+                adapter = GmailAdapter(google_tokens)
 
-                print("EMAIL MESSAGE SAVED TO MONGODB")
-                print("Lead:", lead_id)
-                print("Conversation:", conversation_id)
-                print("Subject:", subject)
+                adapter.send(
+                    recipient=sender_email,
+                    subject=f"Re: {subject}",
+                    message=reply,
+                )
 
-                if lead.get("automation_enabled", True):
-                    reply = generate_reply(
+                create_message(
+                    Message(
                         conversation_id=conversation_id,
-                        new_message=body,
-                    )
+                        lead_id=lead_id,
+                        channel="email",
+                        sender_id="sales_assistant",
+                        direction="outbound",
+                        content=reply,
+                    ).model_dump()
+                )
 
-                    adapter = GmailAdapter(google_tokens)
-
-                    adapter.send(
-                        recipient=sender_email,
-                        subject=f"Re: {subject}",
-                        message=reply,
-                    )
-
-                    create_message(
-                         Message(
-                            conversation_id=conversation_id,
-                            lead_id=lead_id,
-                            channel="email",
-                            sender_id="sales_assistant",
-                            direction="outbound",
-                            content=reply,
-                        ).model_dump()
-                    )
-
-                    print("GMAIL AI REPLY SAVED TO MONGODB")
-
+                print("GMAIL AI REPLY SAVED TO MONGODB")
 
             messages.append({
-                "id": item["id"],
+                "id": gmail_message_id,
                 "from": sender,
                 "subject": subject,
                 "saved": True,
@@ -327,6 +358,9 @@ async def poll_gmail_inbox(): #This function polls the Gmail inbox for new messa
         }
 
     except Exception as e:
+
+        print("GMAIL POLLING ERROR:", str(e))
+
         return {
             "gmail_connected": False,
             "error": str(e),
