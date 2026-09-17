@@ -15,7 +15,8 @@ class WhatsAppAdapter:
         result = self.client.messages.create(
             from_=self.from_number,
             to=recipient,
-            body=message,
+            content_sid=os.getenv("TWILIO_CONTENT_SID"),
+            content_variables=f'{{"1": "{message}"}}',
         )
 
         print("WHATSAPP MESSAGE SENT:", result.sid)
