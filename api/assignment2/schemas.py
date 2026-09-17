@@ -97,6 +97,7 @@ class FactCorrectionRequest(BaseModel):
 
 class ResumeRequest(BaseModel):
     run_id: str
+    session_id: str
 
 
 class RunRequest(BaseModel):

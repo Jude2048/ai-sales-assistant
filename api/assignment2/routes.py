@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pdb import run
 
 from fastapi import APIRouter, HTTPException
 
@@ -25,31 +26,21 @@ router = APIRouter(
 )
 
 
-@router.post("/runs")
-def create_assignment2_run(
-    request: RunRequest,
-):
-
+@router.post("/runs/resume", response_model=AgentRun)
+def resume_assignment2_run(request: ResumeRequest):
     try:
-
-        run = start_run(
-            transcript=request.transcript,
-            company_rules=request.company_rules,
+        run = resume_run(
+            run_id=request.run_id,
             session_id=request.session_id,
-            simulate_failure_at=(
-                request.simulate_failure_at
-            ),
         )
 
-        return run.model_dump()
+        return run
 
     except Exception as exc:
-
         raise HTTPException(
             status_code=500,
             detail=str(exc),
         )
-
 
 @router.get("/runs/{run_id}")
 def get_assignment2_run(
