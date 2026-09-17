@@ -1,4 +1,5 @@
 import os
+from unittest import result
 from twilio.rest import Client
 
 
@@ -15,8 +16,7 @@ class WhatsAppAdapter:
         result = self.client.messages.create(
             from_=self.from_number,
             to=recipient,
-            content_sid=os.getenv("TWILIO_CONTENT_SID"),
-            content_variables=f'{{"1": "{message}"}}',
+            body=message,
         )
 
         print("WHATSAPP MESSAGE SENT:", result.sid)
