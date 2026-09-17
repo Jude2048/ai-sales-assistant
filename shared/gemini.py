@@ -46,6 +46,8 @@ Rules:
 - "need" should contain the customer's stated business need.
 - "company_size" should be the number of employees if stated.
 - "budget" should be the stated numerical budget.
+- Only extract a budget when the customer explicitly states a budget or price.
+- If no budget is explicitly stated by the customer, return budget as null.
 - For "service", map the customer's request to ONE of these exact supported services when applicable:
   "data analytics"
   "business intelligence"
