@@ -1,4 +1,5 @@
 import os
+import json
 from twilio.rest import Client
 
 
@@ -15,7 +16,11 @@ class WhatsAppAdapter:
         result = self.client.messages.create(
             from_=self.from_number,
             to=recipient,
-            body=message,
+            content_sid=os.getenv("TWILIO_CONTENT_SID"),
+            content_variables=json.dumps({
+                "1": "17 September 2026",
+                "2": message,
+            }),
         )
 
         print("WHATSAPP MESSAGE SENT:", result.sid)

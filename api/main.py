@@ -22,6 +22,7 @@ from shared.mongo import (
 from shared.schemas import Lead, Conversation, Message
 from api.assignment1.whatsapp_adapter import WhatsAppAdapter
 from pydantic import BaseModel
+from api.assignment1.instagram_adapter import InstagramAdapter
 import json
     
     
@@ -67,6 +68,20 @@ async def test_whatsapp_send(request: WhatsAppTestRequest):
     )
 
     return result
+
+class InstagramTestRequest(BaseModel):
+    to: str
+    message: str
+
+
+@app.post("/debug/instagram/send")
+async def test_instagram_send(request: InstagramTestRequest):
+    adapter = InstagramAdapter()
+
+    return adapter.send(
+        recipient=request.to,
+        message=request.message,
+    )
 
 @app.get("/auth/google/callback")
 async def google_callback(code: str | None = None):
