@@ -1079,7 +1079,7 @@ if source_facts:
                     "Apply Fact Correction",
                     type="primary",
                     use_container_width=True,
-                    key="assignment2_apply_fact_correction",
+                    key=f"apply_fact_correction_{run.get('run_id')}_{selected_fact_id}",
                 ):
 
                     correction_result = api_post(
@@ -1196,7 +1196,7 @@ if source_facts:
                         "▶️ Rerun Corrected Workflow",
                         type="primary",
                         use_container_width=True,
-                        key="assignment2_rerun_corrected",
+                        key=f"rerun_corrected_{latest_run.get('run_id')}",
                     ):
 
                         # IMPORTANT:
