@@ -497,10 +497,7 @@ if assignment.startswith("1"):
                     status,
                 )
 
-                assignment_data = lead.get(
-                    "assignment",
-                    {},
-                )
+                assignment_data = lead.get("assignment") or {}
 
                 st.write(
                     "**Representative:**",

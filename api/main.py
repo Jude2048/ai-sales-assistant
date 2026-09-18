@@ -363,294 +363,112 @@ async def poll_gmail_inbox():
 
                 pending_booking = lead.get("pending_booking") or {}
                 pending_status = pending_booking.get("status")
+                pending = lead.get("pending_booking", {})
+                body_clean = body.strip()
 
-                # -----------------------------------------------------
-                # STEP 1: CUSTOMER SELECTED 1 / 2 / 3
-                # -----------------------------------------------------
+                # ------------------------------------------------
+                # SLOT SELECTION
+                # ------------------------------------------------
+                if pending_status == "awaiting_selection" and body_clean in {"1", "2", "3"}:
 
-                if (
-                    pending_status == "awaiting_selection"
-                    and body.strip() in {"1", "2", "3"}
-                ):
+                    slots = pending.get("slots", [])
 
-                    selected_slot = get_selected_booking_slot(
-                        lead,
-                        body
-                    )
+                    index = int(body_clean) - 1
 
-                    if selected_slot:
+                    if index < len(slots):
 
-                        slot_time = datetime.fromisoformat(selected_slot)
+                        selected_slot = slots[index]
 
-                        # Never allow a previously offered slot that has now passed.
-                        london_now = datetime.now(ZoneInfo("Europe/London"))
+                        shared.mongo.update_lead(
+                            lead_id,
+                            {
+                                "pending_booking": {
+                                    "slot": selected_slot,
+                                    "status": "awaiting_confirmation",
+                                },
+                                "updated_at": datetime.utcnow(),
+                            },
+                        )
 
-                        if slot_time <= london_now:
+                        start_time = datetime.fromisoformat(selected_slot)
 
-                            # Generate fresh slots.
-                            fresh_slots = get_booking_slots()
+                        reply = (
+                            "You selected "
+                            f"{start_time.strftime('%A, %d %B at %H:%M')}. "
+                            "Would you like me to confirm this booking?"
+                        )
 
-                            if fresh_slots:
+                    else:
+                        reply = "That slot is no longer available. Please choose another slot."
 
-                                fresh_slot_strings = [
-                                    slot.isoformat()
-                                    for slot in fresh_slots
-                                ]
+                # ------------------------------------------------
+                # CONFIRMATION
+                # ------------------------------------------------
+                elif pending_status == "awaiting_confirmation":
 
-                                shared.mongo.update_lead(
-                                    lead_id,
-                                    {
-                                        "pending_booking": {
-                                            "slots": fresh_slot_strings,
-                                            "status": "awaiting_selection",
-                                        },
-                                        "updated_at": datetime.utcnow(),
-                                    }
-                                )
+                    if is_booking_confirmation(body):
 
-                                reply = (
-                                    "The previously offered times have expired. "
-                                    "Here are the current available times:\n\n"
-                                    + "\n".join(
-                                        f"{i + 1}. "
-                                        f"{slot.strftime('%A, %d %B at %H:%M')}"
-                                        for i, slot in enumerate(fresh_slots)
-                                    )
-                                    + "\n\nPlease reply with the number of your preferred slot."
-                                )
+                        selected_slot = pending.get("slot")
+                        start_time = datetime.fromisoformat(selected_slot)
 
-                            else:
+                        result = book_meeting(
+                            lead_id=lead_id,
+                            conversation_id=conversation_id,
+                            attendee_email=None,
+                            start_time=start_time,
+                            duration_minutes=30,
+                            google_tokens_collection=shared.mongo.google_tokens_collection,
+                        )
 
-                                shared.mongo.update_lead(
-                                    lead_id,
-                                    {
-                                        "pending_booking": None,
-                                        "updated_at": datetime.utcnow(),
-                                    }
-                                )
+                        if result["status"] in {"confirmed", "already_booked"}:
 
-                                reply = (
-                                    "The previously offered times have expired and "
-                                    "there are currently no available consultation slots."
-                                )
+                            shared.mongo.update_lead(
+                                lead_id,
+                                {
+                                    "status": "booked",
+                                    "meeting_status": "confirmed",
+                                    "pending_booking": {
+                                        "slot": selected_slot,
+                                        "status": "confirmed",
+                                    },
+                                    "updated_at": datetime.utcnow(),
+                                },
+                            )
 
-                        else:
+                            reply = (
+                                "Your consultation is confirmed for "
+                                f"{start_time.strftime('%A, %d %B at %H:%M')}."
+                            )
+
+                        elif result["status"] == "slot_unavailable":
 
                             shared.mongo.update_lead(
                                 lead_id,
                                 {
                                     "pending_booking": {
-                                        "slot": selected_slot,
-                                        "status": "awaiting_confirmation",
+                                        "status": "slot_unavailable",
                                     },
                                     "updated_at": datetime.utcnow(),
-                                }
+                                },
                             )
 
                             reply = (
-                                f"You selected "
-                                f"{slot_time.strftime('%A, %d %B at %H:%M')}. "
-                                "Would you like me to confirm this booking?"
-                            )
-
-                    else:
-
-                        # This is not a slot selection.
-                        # Clear stale selection state and process the message
-                        # normally through qualification/conversation logic.
-
-                        shared.mongo.update_lead(
-                            lead_id,
-                            {
-                                "pending_booking": None,
-                                "updated_at": datetime.utcnow(),
-                            }
-                        )
-
-                        qualification = qualify_lead(
-                            conversation_id=conversation_id,
-                            new_message=body,
-                        )
-
-                        status = qualification["qualification"]["status"]
-
-                        if status == "needs_information":
-
-                            reply = qualification["qualification"]["follow_up"]
-
-                        elif status == "qualified":
-
-                            reply = qualification["qualification"]["slot_message"]
-
-                        elif status == "not_qualified":
-
-                            reply = (
-                                "Thank you for sharing those details. "
-                                "Unfortunately, your requirements do not meet "
-                                "our current qualification criteria."
+                                "Sorry, that slot is no longer available. "
+                                "Please choose another available time."
                             )
 
                         else:
-
                             reply = (
-                                "Thank you for your message. "
-                                "We'll review your requirements and get back to you."
+                                "I couldn't confirm the booking because the "
+                                "calendar response was uncertain. Please try again."
                             )
-
-                # -----------------------------------------------------
-                # STEP 2: CUSTOMER CONFIRMS SELECTED SLOT
-                # -----------------------------------------------------
-
-                elif pending_status == "awaiting_confirmation":
-
-                    if is_booking_confirmation(body):
-
-                        selected_slot = pending_booking.get("slot")
-
-                        if not selected_slot:
-                            shared.mongo.update_lead(
-                                lead_id,
-                                {
-                                    "pending_booking": None,
-                                    "updated_at": datetime.utcnow(),
-                                }
-                            )
-
-                            reply = (
-                                "The selected meeting time is no longer "
-                                "available. Please choose from the available "
-                                "times again."
-                            )
-
-                        else:
-
-                            start_time = datetime.fromisoformat(
-                                selected_slot
-                            )
-
-                            booking_result = book_meeting(
-                                lead_id=lead_id,
-                                conversation_id=conversation_id,
-                                attendee_email=sender_email,
-                                start_time=start_time,
-                                duration_minutes=30,
-                                google_tokens_collection=google_tokens,
-                            )
-
-                            if booking_result["status"] == "confirmed":
-
-                                shared.mongo.update_lead(
-                                    lead_id,
-                                    {
-                                        "status": "booked",
-                                        "pending_booking": {
-                                            "slot": selected_slot,
-                                            "status": "confirmed",
-                                        },
-                                        "meeting_status": "confirmed",
-                                        "updated_at": datetime.utcnow(),
-                                    }
-                                )
-
-                                reply = (
-                                    "Your consultation is confirmed for "
-                                    f"{start_time.strftime('%A, %d %B at %H:%M')}. "
-                                    "You will receive the calendar invitation shortly."
-                                )
-
-                            elif booking_result["status"] == "already_booked":
-
-                                shared.mongo.update_lead(
-                                    lead_id,
-                                    {
-                                        "status": "booked",
-                                        "pending_booking": {
-                                            "slot": selected_slot,
-                                            "status": "confirmed",
-                                        },
-                                        "meeting_status": "confirmed",
-                                        "updated_at": datetime.utcnow(),
-                                    }
-                                )
-
-                                reply = (
-                                    "Your consultation is already confirmed for "
-                                    f"{start_time.strftime('%A, %d %B at %H:%M')}."
-                                )
-
-                            elif booking_result["status"] == "slot_unavailable":
-
-                                shared.mongo.update_lead(
-                                    lead_id,
-                                    {
-                                        "pending_booking": {
-                                            "status": "slot_unavailable"
-                                        },
-                                        "updated_at": datetime.utcnow(),
-                                    }
-                                )
-
-                                reply = (
-                                    "Sorry, that slot is no longer available. "
-                                    "Please choose another available time."
-                                )
-
-                            else:
-
-                                # Do not blindly retry uncertain bookings.
-                                reply = (
-                                    "I couldn't confirm the meeting because "
-                                    "the calendar response was uncertain. "
-                                    "Please try again or contact the team."
-                                )
 
                     else:
+                        reply = "Please reply with 'yes' to confirm the selected time."
 
-                        reply = (
-                            "Please reply with 'yes' to confirm the selected "
-                            "time."
-                        )
-
-                # -----------------------------------------------------
-                # STEP 3: SLOT WAS UNAVAILABLE
-                # -----------------------------------------------------
-
-                elif pending_status == "slot_unavailable":
-
-                    # Clear the stale booking state so qualification can
-                    # generate a fresh set of available slots.
-                    shared.mongo.update_lead(
-                        lead_id,
-                        {
-                            "pending_booking": None,
-                            "updated_at": datetime.utcnow(),
-                        }
-                    )
-
-                    qualification = qualify_lead(
-                        conversation_id=conversation_id,
-                        new_message=body,
-                    )
-
-                    status = qualification["qualification"]["status"]
-
-                    if status == "qualified":
-                        reply = qualification["qualification"]["slot_message"]
-
-                    elif status == "needs_information":
-                        reply = qualification["qualification"]["follow_up"]
-
-                    else:
-                        reply = (
-                            "Thank you for sharing those details. "
-                            "Unfortunately, your requirements do not meet "
-                            "our current qualification criteria."
-                        )
-
-                # -----------------------------------------------------
-                # STEP 4: NORMAL QUALIFICATION
-                # -----------------------------------------------------
-
+                # ------------------------------------------------
+                # NORMAL QUALIFICATION
+                # ------------------------------------------------
                 else:
 
                     qualification = qualify_lead(
