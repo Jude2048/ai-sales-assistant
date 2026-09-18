@@ -217,98 +217,99 @@ if assignment.startswith("1"):
     )
 
     # --------------------------------------------------------
-    # LEFT — Unified Inbox
-    # --------------------------------------------------------
+# LEFT — Unified Inbox
+# --------------------------------------------------------
 
-    with left:
+with left:
 
-        st.subheader("Unified Inbox")
+    st.subheader("Unified Inbox")
 
-        leads = api_get("/api/leads")
+    leads = api_get("/api/leads")
 
-        if "error" in leads:
+    if "error" in leads:
 
-            st.warning(
-                "Lead API not available yet."
-            )
+        st.warning(
+            "Lead API not available yet."
+        )
 
-            st.info(
-                "The UI is ready for the backend lead endpoint."
-            )
+        st.info(
+            "The UI is ready for the backend lead endpoint."
+        )
+
+    else:
+
+        lead_list = (
+            leads
+            if isinstance(leads, list)
+            else leads.get("leads", [])
+        )
+
+        filtered = []
+
+        for lead in lead_list:
+
+            channel = lead.get(
+                "channel",
+                ""
+            ).lower()
+
+            if (
+                channel == "instagram"
+                and show_instagram
+            ):
+                filtered.append(lead)
+
+            elif (
+                channel == "email"
+                and show_email
+            ):
+                filtered.append(lead)
+
+            elif (
+                channel == "whatsapp"
+                and show_whatsapp
+            ):
+                filtered.append(lead)
+
+        if not filtered:
+
+            st.info("No leads found.")
 
         else:
 
-            lead_list = (
-                leads
-                if isinstance(leads, list)
-                else leads.get("leads", [])
-            )
+            for lead in filtered:
 
-            filtered = []
+                lead_id = lead.get(
+                    "lead_id",
+                    "unknown"
+                )
 
-            for lead in lead_list:
+                status = lead.get(
+                    "status",
+                    "unknown"
+                )
 
                 channel = lead.get(
                     "channel",
-                    "",
-                ).lower()
+                    ""
+                )
 
-                if (
-                    channel == "instagram"
-                    and show_instagram
+                label = (
+                    f"{channel.upper()}  "
+                    f"{lead_id}"
+                )
+
+                if st.button(
+                    label,
+                    key=f"lead_{lead_id}",
+                    use_container_width=True,
                 ):
-                    filtered.append(lead)
 
-                elif (
-                    channel == "email"
-                    and show_email
-                ):
-                    filtered.append(lead)
+                    st.session_state[
+                        "selected_lead"
+                    ] = lead_id
 
-                elif (
-                    channel == "whatsapp"
-                    and show_whatsapp
-                ):
-                    filtered.append(lead)
-
-            if not filtered:
-
-                st.info("No leads found.")
-
-            else:
-
-                for lead in filtered:
-
-                    lead_id = lead.get(
-                        "lead_id",
-                        "unknown",
-                    )
-
-                    status = lead.get(
-                        "status",
-                        "unknown",
-                    )
-
-                    channel = lead.get(
-                        "channel",
-                        "",
-                    )
-
-                    label = (
-                        f"{channel.upper()}  "
-                        f"{lead_id}"
-                    )
-
-                    if st.button(
-                        "Apply Fact Correction",
-                         type="primary",
-                    ):
-
-                        st.session_state[
-                            "selected_lead"
-                        ] = lead_id
-
-                        st.rerun()
+                    st.rerun()
 
     # --------------------------------------------------------
     # SELECTED LEAD
