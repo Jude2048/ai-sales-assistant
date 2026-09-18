@@ -300,9 +300,8 @@ if assignment.startswith("1"):
                     )
 
                     if st.button(
-                        label,
-                        key=f"lead_{lead_id}",
-                        use_container_width=True,
+                        "Apply Fact Correction",
+                         type="primary",
                     ):
 
                         st.session_state[
@@ -993,34 +992,63 @@ else:
 
                     display_source_reference(fact)
 
-        # ====================================================
-        # FACT CORRECTION
-        # ====================================================
+# ========================================================
+# FACT CORRECTION
+# ========================================================
 
-        if source_facts:
+if source_facts:
 
-            with st.expander(
-                "✏️ Correct a Source Fact",
-                expanded=False,
-            ):
+    with st.expander(
+        "✏️ Correct a Source Fact",
+        expanded=False,
+    ):
 
-                fact_options = [
-                    fact.get(
-                        "fact_id",
-                        "unknown",
-                    )
-                    for fact in source_facts
-                ]
+        # Always read the current run from session state.
+        # Do not depend on a local `run` variable inside buttons.
+        current_run = st.session_state.get(
+            "assignment2_run"
+        )
+
+        if not current_run:
+
+            st.warning(
+                "No active Assignment 2 run."
+            )
+
+        else:
+
+            fact_options = [
+                fact.get(
+                    "fact_id",
+                    "unknown",
+                )
+                for fact in current_run.get(
+                    "source_facts",
+                    [],
+                )
+            ]
+
+            if not fact_options:
+
+                st.info(
+                    "No source facts available to correct."
+                )
+
+            else:
 
                 selected_fact_id = st.selectbox(
                     "Fact",
                     fact_options,
+                    key="assignment2_selected_fact",
                 )
 
                 selected_fact = next(
                     (
                         fact
-                        for fact in source_facts
+                        for fact in current_run.get(
+                            "source_facts",
+                            [],
+                        )
                         if fact.get("fact_id")
                         == selected_fact_id
                     ),
@@ -1039,58 +1067,199 @@ else:
                 corrected_content = st.text_input(
                     "Corrected fact",
                     value=current_content,
+                    key="assignment2_corrected_fact",
                 )
 
                 st.caption(
-                    "Correcting a fact creates a new source version "
-                    "and marks previous agent outputs stale."
+                    "Correcting a fact creates a new source "
+                    "version and marks previous agent outputs stale."
                 )
 
                 if st.button(
                     "Apply Fact Correction",
                     type="primary",
+                    use_container_width=True,
+                    key="assignment2_apply_fact_correction",
                 ):
 
                     correction_result = api_post(
                         "/assignment2/runs/correct-fact",
                         {
-                            "run_id": run.get("run_id"),
-                            "session_id": run.get("session_id"),
+                            "run_id": current_run.get(
+                                "run_id"
+                            ),
+                            "session_id": current_run.get(
+                                "session_id"
+                            ),
                             "fact_id": selected_fact_id,
                             "new_content": corrected_content,
                         },
                         timeout=30,
                     )
 
-                    if show_api_error(
-                        correction_result,
-                        "Could not correct the source fact.",
-                    ):
+                    if "error" in correction_result:
 
-                        pass
+                        st.error(
+                            "Could not correct the source fact."
+                        )
+
+                        st.code(
+                            correction_result.get(
+                                "error",
+                                "Unknown error",
+                            )
+                        )
 
                     else:
 
-                        st.session_state.assignment2_run = None
-
+                        # Refresh the same run.
                         refreshed = api_get(
                             f"/assignment2/runs/"
-                            f"{run.get('run_id')}"
-                            f"?session_id={run.get('session_id')}"
+                            f"{current_run.get('run_id')}"
+                            f"?session_id="
+                            f"{current_run.get('session_id')}"
                         )
 
-                        if "error" not in refreshed:
+                        if "error" in refreshed:
+
+                            st.error(
+                                "Fact was corrected, but the "
+                                "updated run could not be loaded."
+                            )
+
+                            st.code(
+                                refreshed.get(
+                                    "error",
+                                    "Unknown error",
+                                )
+                            )
+
+                        else:
 
                             st.session_state.assignment2_run = (
                                 refreshed
                             )
 
-                        st.success(
-                            "Source fact corrected. "
-                            "Previous outputs are now stale."
+                            st.session_state.assignment2_run_id = (
+                                refreshed.get("run_id")
+                            )
+
+                            st.success(
+                                f"Source fact corrected. "
+                                f"Source version is now "
+                                f"v{refreshed.get('source_version')}."
+                            )
+
+                            st.rerun()
+
+            # ------------------------------------------------
+            # RERUN STALE WORKFLOW
+            # ------------------------------------------------
+
+            latest_run = st.session_state.get(
+                "assignment2_run"
+            )
+
+            if latest_run:
+
+                latest_status = latest_run.get(
+                    "status"
+                )
+
+                latest_version = latest_run.get(
+                    "source_version",
+                    1,
+                )
+
+                has_stale_steps = any(
+                    step.get("status") == "STALE"
+                    for step in latest_run.get(
+                        "steps",
+                        [],
+                    )
+                )
+
+                if (
+                    latest_version > 1
+                    and has_stale_steps
+                    and latest_status == "RUNNING"
+                ):
+
+                    st.divider()
+
+                    st.warning(
+                        f"Source facts changed to v{latest_version}. "
+                        "Previous agent outputs are stale."
+                    )
+
+                    if st.button(
+                        "▶️ Rerun Corrected Workflow",
+                        type="primary",
+                        use_container_width=True,
+                        key="assignment2_rerun_corrected",
+                    ):
+
+                        # IMPORTANT:
+                        # Read the run directly from session state
+                        # inside the button action.
+                        rerun_run = st.session_state.get(
+                            "assignment2_run"
                         )
 
-                        st.rerun()
+                        if not rerun_run:
+
+                            st.error(
+                                "No active run available."
+                            )
+
+                        else:
+
+                            with st.spinner(
+                                "Rerunning Intake → Planning → Review "
+                                "using the corrected source facts..."
+                            ):
+
+                                resumed = api_post(
+                                    "/assignment2/runs/resume",
+                                    {
+                                        "run_id": rerun_run.get(
+                                            "run_id"
+                                        ),
+                                        "session_id": rerun_run.get(
+                                            "session_id"
+                                        ),
+                                    },
+                                    timeout=180,
+                                )
+
+                            if "error" in resumed:
+
+                                st.error(
+                                    "Could not rerun the corrected workflow."
+                                )
+
+                                st.code(
+                                    resumed.get(
+                                        "error",
+                                        "Unknown error",
+                                    )
+                                )
+
+                            else:
+
+                                st.session_state.assignment2_run = (
+                                    resumed
+                                )
+
+                                st.session_state.assignment2_run_id = (
+                                    resumed.get("run_id")
+                                )
+
+                                st.success(
+                                    "Corrected workflow completed."
+                                )
+
+                                st.rerun()
 
         # ====================================================
         # WORKFLOW TRACE
@@ -1988,21 +2157,20 @@ else:
                 st.session_state.assignment2_run = None
 
                 st.rerun()
-
-    else:
+            else:
 
         # ====================================================
         # EMPTY ASSIGNMENT 2 STATE
         # ====================================================
 
-        st.divider()
+                st.divider()
 
-        st.info(
+                st.info(
             "Enter a meeting transcript and company rules, "
             "then run the workflow."
-        )
+            )
 
-        st.markdown(
+                st.markdown(
             """
             **Workflow**
 
@@ -2015,4 +2183,4 @@ else:
             If Review finds a problem, the correction is sent
             back to Planning and the bounded review loop runs again.
             """
-        )
+            )
