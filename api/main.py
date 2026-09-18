@@ -3,7 +3,7 @@ from urllib.parse import urlencode
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import asyncio
-from api.assignment1.conversation_engine import generate_reply
+from api.assignment1.conversation_engine import generate_reply, get_booking_slots
 from api.webhooks.instagram import router as instagram_router
 from fastapi.responses import HTMLResponse, RedirectResponse
 from api.webhooks.whatsapp import router as whatsapp_router
@@ -24,6 +24,7 @@ from api.assignment1.conversation_engine import generate_reply
 from email.utils import parseaddr
 from api.assignment1.conversation_engine import qualify_lead, generate_reply, qualify_lead, get_selected_booking_slot, is_booking_confirmation
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from api.assignment1.calendar_adapter import GoogleCalendarAdapter
 from datetime import datetime
@@ -367,32 +368,90 @@ async def poll_gmail_inbox():
                 # STEP 1: CUSTOMER SELECTED 1 / 2 / 3
                 # -----------------------------------------------------
 
-                if pending_status == "awaiting_selection":
+                if (
+                    pending_status == "awaiting_selection"
+                    and body.strip() in {"1", "2", "3"}
+                ):
 
                     selected_slot = get_selected_booking_slot(
                         lead,
-                        body,
+                        body
                     )
 
                     if selected_slot:
 
-                        shared.mongo.update_lead(
-                            lead_id,
-                            {
-                                "pending_booking": {
-                                    "slot": selected_slot,
-                                    "status": "awaiting_confirmation",
-                                },
-                                "updated_at": datetime.utcnow(),
-                            }
-                        )
-
                         slot_time = datetime.fromisoformat(selected_slot)
 
-                        reply = (
-                            f"You selected {slot_time.strftime('%A, %d %B at %H:%M')}. "
-                            "Would you like me to confirm this booking?"
-                        )
+                        # Never allow a previously offered slot that has now passed.
+                        london_now = datetime.now(ZoneInfo("Europe/London"))
+
+                        if slot_time <= london_now:
+
+                            # Generate fresh slots.
+                            fresh_slots = get_booking_slots()
+
+                            if fresh_slots:
+
+                                fresh_slot_strings = [
+                                    slot.isoformat()
+                                    for slot in fresh_slots
+                                ]
+
+                                shared.mongo.update_lead(
+                                    lead_id,
+                                    {
+                                        "pending_booking": {
+                                            "slots": fresh_slot_strings,
+                                            "status": "awaiting_selection",
+                                        },
+                                        "updated_at": datetime.utcnow(),
+                                    }
+                                )
+
+                                reply = (
+                                    "The previously offered times have expired. "
+                                    "Here are the current available times:\n\n"
+                                    + "\n".join(
+                                        f"{i + 1}. "
+                                        f"{slot.strftime('%A, %d %B at %H:%M')}"
+                                        for i, slot in enumerate(fresh_slots)
+                                    )
+                                    + "\n\nPlease reply with the number of your preferred slot."
+                                )
+
+                            else:
+
+                                shared.mongo.update_lead(
+                                    lead_id,
+                                    {
+                                        "pending_booking": None,
+                                        "updated_at": datetime.utcnow(),
+                                    }
+                                )
+
+                                reply = (
+                                    "The previously offered times have expired and "
+                                    "there are currently no available consultation slots."
+                                )
+
+                        else:
+
+                            shared.mongo.update_lead(
+                                lead_id,
+                                {
+                                    "pending_booking": {
+                                        "slot": selected_slot,
+                                        "status": "awaiting_confirmation",
+                                    },
+                                    "updated_at": datetime.utcnow(),
+                                }
+                            )
+
+                            reply = (
+                                f"You selected "
+                                f"{slot_time.strftime('%A, %d %B at %H:%M')}. "
+                                "Would you like me to confirm this booking?"
+                            )
 
                     else:
 

@@ -151,27 +151,34 @@ def is_booking_confirmation(message: str) -> bool:
 
     return text in confirmations
 
+from zoneinfo import ZoneInfo
+
 def get_booking_slots():
     calendar = GoogleCalendarAdapter(google_tokens_collection)
 
-    now = datetime.now().astimezone()
+    london_tz = ZoneInfo("Europe/London")
+    now = datetime.now(london_tz)
+
     slots = []
 
     for day_offset in range(7):
+
         date = now.date() + timedelta(days=day_offset)
 
         for hour in range(9, 17):
+
             start_time = datetime(
                 date.year,
                 date.month,
                 date.day,
                 hour,
                 0,
-                tzinfo=now.tzinfo,
+                tzinfo=london_tz,
             )
 
             end_time = start_time + timedelta(minutes=30)
 
+            # Never offer a slot that has already started.
             if start_time <= now:
                 continue
 
