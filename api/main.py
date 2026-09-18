@@ -779,6 +779,45 @@ async def api_get_actions(lead_id: str):
 class AutomationRequest(BaseModel):
     enabled: bool
 
+@app.get("/debug/calendar/availability")
+async def debug_calendar_availability():
+    try:
+        calendar = GoogleCalendarAdapter(
+            shared.mongo.google_tokens_collection
+        )
+
+        now = datetime.now().astimezone()
+
+        start = now.replace(
+            hour=9,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        end = now.replace(
+            hour=17,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        busy = calendar.get_availability(start, end)
+
+        return {
+            "status": "ok",
+            "calendar_connected": True,
+            "date": start.date().isoformat(),
+            "timezone": str(start.tzinfo),
+            "busy": busy,
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "calendar_connected": False,
+            "error": str(e),
+        }
 
 @app.post("/api/leads/{lead_id}/automation")
 async def api_update_automation(
@@ -825,6 +864,7 @@ async def api_get_booking(lead_id: str):
     return {
         "booking": booking
     }
+
 
 @app.get("/privacy-policy", response_class=HTMLResponse) #this endpoint serves the privacy policy page for the application
 async def privacy_policy():
