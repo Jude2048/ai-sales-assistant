@@ -2,6 +2,41 @@
 
 Open the deployed Streamlit application using the provided demo URL.
 
+## Demo Access — Instagram
+
+The Instagram integration is connected to the following test business account:
+
+**Instagram:** `@client.ai.test`
+
+To test the Instagram workflow:
+
+1. Open the Instagram account above.
+2. Send a direct message to the account using the provided demo/test account.
+3. The message is received through the Meta webhook.
+4. The FastAPI backend processes the inquiry and stores it as a lead.
+5. Open the Streamlit UI and select **`1 — Lead Qualification & Booking`**.
+6. Refresh the lead list and select the newly received lead.
+7. Continue through qualification, representative assignment, and meeting booking.
+
+> **Note:** The Instagram account is a test/demo business account used for the assignment. Availability of the messaging workflow depends on Meta test-account permissions and configuration.
+
+### Email Demo
+
+The email integration is connected to the following test/demo inbox:
+
+**Email:** `YOUR_DEMO_EMAIL@example.com`
+
+To test the email workflow:
+
+1. Send an email inquiry to the address above.
+2. The Gmail integration retrieves the incoming message.
+3. The FastAPI backend processes the inquiry and stores it as a lead.
+4. Open the Streamlit UI and select **`1 — Lead Qualification & Booking`**.
+5. Refresh the lead list and select the newly received lead.
+6. Continue through qualification, representative assignment, and meeting booking.
+
+> **Note:** This is a test/demo inbox configured for the assignment. The email workflow depends on the configured Gmail API credentials and permissions.
+
 ### Assignment 1 — Lead Qualification & Booking
 
 1. Select **`1 — Lead Qualification & Booking`** from the assignment selector.
