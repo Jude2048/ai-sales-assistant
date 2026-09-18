@@ -371,7 +371,7 @@ async def poll_gmail_inbox():
 
                     selected_slot = get_selected_booking_slot(
                         lead,
-                        body
+                        body,
                     )
 
                     if selected_slot:
@@ -396,11 +396,47 @@ async def poll_gmail_inbox():
 
                     else:
 
-                        # Do not regenerate slots unnecessarily.
-                        reply = (
-                            "Please reply with 1, 2, or 3 to select "
-                            "one of the available meeting times."
+                        # This is not a slot selection.
+                        # Clear stale selection state and process the message
+                        # normally through qualification/conversation logic.
+
+                        shared.mongo.update_lead(
+                            lead_id,
+                            {
+                                "pending_booking": None,
+                                "updated_at": datetime.utcnow(),
+                            }
                         )
+
+                        qualification = qualify_lead(
+                            conversation_id=conversation_id,
+                            new_message=body,
+                        )
+
+                        status = qualification["qualification"]["status"]
+
+                        if status == "needs_information":
+
+                            reply = qualification["qualification"]["follow_up"]
+
+                        elif status == "qualified":
+
+                            reply = qualification["qualification"]["slot_message"]
+
+                        elif status == "not_qualified":
+
+                            reply = (
+                                "Thank you for sharing those details. "
+                                "Unfortunately, your requirements do not meet "
+                                "our current qualification criteria."
+                            )
+
+                        else:
+
+                            reply = (
+                                "Thank you for your message. "
+                                "We'll review your requirements and get back to you."
+                            )
 
                 # -----------------------------------------------------
                 # STEP 2: CUSTOMER CONFIRMS SELECTED SLOT
