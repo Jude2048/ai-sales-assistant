@@ -5,11 +5,20 @@ A focused AI prototype combining two connected workflows:
 1. **Assignment 1 — Sales Assistant:** turns incoming inquiries from Instagram, WhatsApp and email into qualified, assigned leads and confirmed calendar meetings.
 2. **Assignment 2 — Operations Coordinator:** turns a fictional meeting transcript and company rules into a reviewed action plan using three distinct LLM-powered agents.
 
-# Architecture
+## Tech Stack
+
+- **Frontend:** Streamlit
+- **Backend:** FastAPI
+- **Database:** MongoDB Atlas
+- **LLM:** Google Gemini (`gemini-3.1-flash-lite`)
+- **Integrations:** Meta Graph API, Twilio, Gmail API, Google Calendar API
+- **Deployment:** Railway
+
+## Architecture
 
 The project uses a FastAPI backend, Streamlit frontend, MongoDB Atlas for persistence, and Google Gemini for LLM-powered functionality.
 
-## High-Level Architecture
+### High-Level Architecture
 
 The Streamlit UI communicates with the FastAPI backend through REST API endpoints.
 
@@ -35,7 +44,7 @@ The Assignment 2 workflow consists of three distinct LLM-powered agents:
 
 MongoDB stores Assignment 2 runs, source facts, agent steps and agent handoffs so that workflows can be inspected, resumed and versioned.
 
-## Application Flow
+### Application Flow
 
 ### Assignment 1
 
@@ -66,7 +75,7 @@ Meeting transcript + company rules
 → Planning revision when required  
 → Final Action Plan
 
-## Persistence and Context Management
+### Persistence and Context Management
 
 Assignment 2 maintains persistent workflow state using:
 
@@ -79,7 +88,7 @@ Assignment 2 maintains persistent workflow state using:
 
 When a source fact is corrected, the source version is incremented and previous outputs based on the older version are marked as stale. The affected workflow can then be rerun using the corrected source context.
 
-## Reliability
+### Reliability
 
 The system includes:
 
@@ -106,67 +115,78 @@ source_facts
 
 A run contains:
 
-run_id
-session_id
-source_version
-transcript
-company_rules
-source_facts
-steps
-handoffs
-status
-final_plan
+- `run_id`
+- `session_id`
+- `source_version`
+- `transcript`
+- `company_rules`
+- `source_facts`
+- `steps`
+- `handoffs`
+- `status`
+- `final_plan`
 
 Each agent step contains:
 
-step_id
-run_id
-agent
-attempt
-input_version
-output_version
-status
-input_data
-output_data
-error
+- `step_id`
+- `run_id`
+- `agent`
+- `attempt`
+- `input_version`
+- `output_version`
+- `status`
+- `input_data`
+- `output_data`
+- `error`
 
 Each handoff contains:
 
-handoff_id
-run_id
-from_agent
-to_agent
-input_version
-output_version
-payload
-validation_status
+- `handoff_id`
+- `run_id`
+- `from_agent`
+- `to_agent`
+- `input_version`
+- `output_version`
+- `payload`
+- `validation_status`
 
-Session Isolation
+### Session Isolation
 
-Every Assignment 2 run contains a session_id.
+Every Assignment 2 run contains a `session_id`.
 
-Session A
-   └── Run A
-       └── Client A Context
+- **Session A** → Run A → Client A Context
+- **Session B** → Run B → Client B Context
+
+Runs are retrieved using both `run_id` and `session_id`.
 
 
-Session B
-   └── Run B
-       └── Client B Context
 
-Runs are retrieved using both:
+## Project Structure
 
-run_id
-session_id
+```text
+/api
+  /assignment1
+  /assignment2
+  /webhooks
+  main.py
+
+/ui
+  ui.py
+
+/shared
+  shared models and utilities
+
+README.md
+```
 
 ## Setup
 
 ### Prerequisites
 
 - Python 3.10+
+- Git
 - MongoDB Atlas account
 - Google Gemini API key
-- Git
 - Railway account (for deployment)
 
 ### 1. Clone the repository
@@ -174,18 +194,41 @@ session_id
 ```bash
 git clone <YOUR_GITHUB_REPOSITORY_URL>
 cd <PROJECT_DIRECTORY>
+```
 
-3. Install dependencies
+### 2. Create and activate a virtual environment
 
-Install the backend dependencies:
+```bash
+python -m venv .venv
+```
 
+**Windows:**
+```bash
+.venv\Scripts\activate
+```
+
+**macOS/Linux:**
+```bash
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
 pip install -r api/requirements.txt
+```
 
-Install the Streamlit/UI dependencies if they are maintained separately:
+If the UI has a separate requirements file:
 
+```bash
 pip install -r ui/requirements.txt
+```
 
-4. Configure environment variables
+### 4. Configure environment variables
+
+Create a local `.env` file. Do not commit it to Git.
+
+```env
 GEMINI_API_KEY=<your_gemini_api_key>
 MONGODB_URI=<your_mongodb_atlas_connection_string>
 
@@ -199,46 +242,115 @@ META_VERIFY_TOKEN=<your_meta_verify_token>
 TWILIO_ACCOUNT_SID=<your_twilio_account_sid>
 TWILIO_AUTH_TOKEN=<your_twilio_auth_token>
 TWILIO_WHATSAPP_NUMBER=<your_twilio_whatsapp_number>
+```
 
-5. Run the FastAPI backend
+
+### 5. MongoDB Atlas
+
+Create a MongoDB Atlas database and provide its connection string through `MONGODB_URI`.
+
+MongoDB is used for lead data, conversations, bookings, actions, and Assignment 2 workflow persistence.
+
+### 6. Gemini
+
+Create a Google Gemini API key and configure `GEMINI_API_KEY`.
+
+Assignment 2 uses Gemini for the Intake, Planning, and Review agents.
+
+### 7. Run the FastAPI backend
 
 From the project root:
 
+```bash
 uvicorn api.main:app --reload
+```
 
-The API will normally be available at:
+The API will normally be available at `http://localhost:8000`.
 
-http://localhost:8000
+FastAPI documentation is available at `http://localhost:8000/docs`.
 
-FastAPI documentation:
+### 8. Run the Streamlit frontend
 
-http://localhost:8000/docs
-6. Run the Streamlit frontend
+In a second terminal:
 
-In a second terminal, with the virtual environment activated:
-
+```bash
 streamlit run ui/ui.py
+```
 
-The Streamlit interface will normally be available at:
+The Streamlit interface will normally be available at `http://localhost:8501`.
 
-http://localhost:8501
+### 9. External integrations
 
-7. External integrations
+The production/demo workflow can use:
 
-For production/demo deployment, the following integrations can be configured through their respective environment variables:
+- **Instagram:** Meta Graph API and webhooks
+- **WhatsApp:** Twilio WhatsApp Sandbox
+- **Email:** Gmail API
+- **Calendar:** Google Calendar API
+- **Database:** MongoDB Atlas
+- **LLM:** Google Gemini
 
-Instagram: Meta Graph API and webhook configuration.
-WhatsApp: Twilio WhatsApp Sandbox/webhook configuration.
-Email: Gmail API credentials.
-Calendar: Google Calendar API credentials.
-Database: MongoDB Atlas.
-LLM: Google Gemini API.
+Webhook URLs must point to the deployed FastAPI application rather than the local development server.
 
-8. Railway deployment
+### 10. Railway deployment
 
 The production application is deployed using Railway.
 
-Configure the same required environment variables in the Railway service settings rather than committing them to the repository.
+Configure the required environment variables in Railway service settings rather than committing them to the repository.
+
+For the deployed application, verify:
+
+1. The FastAPI health endpoint responds successfully.
+2. `/docs` is accessible.
+3. The Streamlit UI loads successfully.
+4. MongoDB connectivity works.
+5. Assignment 1 lead qualification and booking work.
+6. The Assignment 1 → Assignment 2 bridge creates a run.
+7. Assignment 2 completes the Intake → Planning → Review workflow.
+
+
+## Testing
+
+The main demonstration scenarios are:
+
+1. **Normal end-to-end run** — Intake → Planning → Review → final plan.
+2. **Rule violation and correction** — Review identifies an issue and the plan is revised.
+3. **Fact correction and propagation** — corrected source facts invalidate stale outputs and propagate through the workflow.
+4. **Simulated failure and recovery** — a selected agent fails and the run resumes from the failed step.
+5. **Session isolation** — separate sessions maintain independent workflow state.
+
+## Demo Access Instructions
+
+Open the deployed Streamlit application using the provided demo URL.
+
+### Assignment 1 — Lead Qualification & Booking
+
+1. Select **`1 — Lead Qualification & Booking`**.
+2. Refresh the lead list and select a lead from the Unified Inbox.
+3. Review the conversation, qualification evidence, representative assignment, and action log.
+4. Use the booking section to check calendar availability and book a meeting.
+
+### Assignment 1 → Assignment 2
+
+1. Select a lead with a booked meeting.
+2. Use **`Send to Ops Coordinator`**.
+3. The system creates an Assignment 2 run linked to the source lead and booking.
+4. The meeting information is passed into Assignment 2 with the clearly labelled:
+   **Synthetic test transcript — fictional data for assignment demonstration**.
+
+### Assignment 2 — AI Sales Workflow
+
+1. Select **`2 — AI Sales Workflow`**.
+2. Enter or use the provided session ID.
+3. Review the transcript and company rules.
+4. Click **Run Workflow**.
+5. Inspect the Intake, Planning, and Review stages, workflow trace, handoffs, and final plan.
+
+### Reliability Demonstrations
+
+- **Simulated failure:** select Intake, Planning, or Review, run the workflow, then use **Resume / Recover**.
+- **Fact correction:** edit a source fact, submit the correction, and rerun the workflow to observe stale outputs and propagation of the corrected context.
+- **Session isolation:** use different session IDs to verify that runs remain isolated.
 
 ## Approximate Model Cost
 
