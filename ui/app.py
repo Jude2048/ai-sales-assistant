@@ -67,7 +67,10 @@ def api_post(path, data=None, timeout=120):
 # SMALL UI HELPERS
 # ============================================================
 
-def show_api_error(result, default_message="Request failed."):
+def show_api_error(
+    result,
+    default_message="Request failed.",
+):
     if isinstance(result, dict) and "error" in result:
         st.error(
             f"{default_message}\n\n"
@@ -78,8 +81,15 @@ def show_api_error(result, default_message="Request failed."):
     return False
 
 
-def get_step(run, agent, attempt=None):
-    steps = run.get("steps", [])
+def get_step(
+    run,
+    agent,
+    attempt=None,
+):
+    steps = run.get(
+        "steps",
+        [],
+    )
 
     matching = [
         step
@@ -100,7 +110,10 @@ def get_step(run, agent, attempt=None):
     return matching[-1]
 
 
-def get_agent_steps(run, agent):
+def get_agent_steps(
+    run,
+    agent,
+):
     return [
         step
         for step in run.get("steps", [])
@@ -117,28 +130,66 @@ def status_icon(status):
         "PENDING": "⏳",
     }
 
-    return icons.get(status, "•")
+    return icons.get(
+        status,
+        "•",
+    )
 
 
 def format_fact(fact):
-    category = fact.get("category", "unknown").replace("_", " ").title()
-    fact_id = fact.get("fact_id", "unknown")
-    content = fact.get("content", "")
+    category = (
+        fact.get(
+            "category",
+            "unknown",
+        )
+        .replace(
+            "_",
+            " ",
+        )
+        .title()
+    )
 
-    return f"**{fact_id} · {category}** — {content}"
+    fact_id = fact.get(
+        "fact_id",
+        "unknown",
+    )
+
+    content = fact.get(
+        "content",
+        "",
+    )
+
+    return (
+        f"**{fact_id} · {category}** — "
+        f"{content}"
+    )
 
 
 def display_source_reference(fact):
-    reference = fact.get("source_reference", {})
+    reference = fact.get(
+        "source_reference",
+        {},
+    )
 
-    quote = reference.get("quote", "")
-    location = reference.get("location", "")
+    quote = reference.get(
+        "quote",
+        "",
+    )
+
+    location = reference.get(
+        "location",
+        "",
+    )
 
     if quote:
-        st.caption(f'📌 "{quote}"')
+        st.caption(
+            f'📌 "{quote}"'
+        )
 
     if location:
-        st.caption(f"Source: {location}")
+        st.caption(
+            f"Source: {location}"
+        )
 
 
 # ============================================================
@@ -148,7 +199,8 @@ def display_source_reference(fact):
 st.title("AI Sales Assistant")
 
 st.caption(
-    "Unified interface for lead qualification, booking, and AI workflow."
+    "Unified interface for lead qualification, booking, "
+    "and AI workflow."
 )
 
 
@@ -165,7 +217,6 @@ assignment = st.radio(
     horizontal=True,
 )
 
-
 st.divider()
 
 
@@ -178,7 +229,7 @@ if assignment.startswith("1"):
     st.header("Assignment 1")
 
     # --------------------------------------------------------
-    # Sidebar
+    # SIDEBAR
     # --------------------------------------------------------
 
     st.sidebar.header("Controls")
@@ -209,7 +260,7 @@ if assignment.startswith("1"):
     )
 
     # --------------------------------------------------------
-    # Main columns
+    # MAIN COLUMNS
     # --------------------------------------------------------
 
     left, middle, right = st.columns(
@@ -217,99 +268,102 @@ if assignment.startswith("1"):
     )
 
     # --------------------------------------------------------
-# LEFT — Unified Inbox
-# --------------------------------------------------------
+    # LEFT — UNIFIED INBOX
+    # --------------------------------------------------------
 
-with left:
+    with left:
 
-    st.subheader("Unified Inbox")
+        st.subheader("Unified Inbox")
 
-    leads = api_get("/api/leads")
-
-    if "error" in leads:
-
-        st.warning(
-            "Lead API not available yet."
+        leads = api_get(
+            "/api/leads"
         )
 
-        st.info(
-            "The UI is ready for the backend lead endpoint."
-        )
+        if "error" in leads:
 
-    else:
+            st.warning(
+                "Lead API not available yet."
+            )
 
-        lead_list = (
-            leads
-            if isinstance(leads, list)
-            else leads.get("leads", [])
-        )
-
-        filtered = []
-
-        for lead in lead_list:
-
-            channel = lead.get(
-                "channel",
-                ""
-            ).lower()
-
-            if (
-                channel == "instagram"
-                and show_instagram
-            ):
-                filtered.append(lead)
-
-            elif (
-                channel == "email"
-                and show_email
-            ):
-                filtered.append(lead)
-
-            elif (
-                channel == "whatsapp"
-                and show_whatsapp
-            ):
-                filtered.append(lead)
-
-        if not filtered:
-
-            st.info("No leads found.")
+            st.info(
+                "The UI is ready for the backend lead endpoint."
+            )
 
         else:
 
-            for lead in filtered:
-
-                lead_id = lead.get(
-                    "lead_id",
-                    "unknown"
+            lead_list = (
+                leads
+                if isinstance(leads, list)
+                else leads.get(
+                    "leads",
+                    [],
                 )
+            )
 
-                status = lead.get(
-                    "status",
-                    "unknown"
-                )
+            filtered = []
+
+            for lead in lead_list:
 
                 channel = lead.get(
                     "channel",
-                    ""
-                )
+                    "",
+                ).lower()
 
-                label = (
-                    f"{channel.upper()}  "
-                    f"{lead_id}"
-                )
-
-                if st.button(
-                    label,
-                    key=f"lead_{lead_id}",
-                    use_container_width=True,
+                if (
+                    channel == "instagram"
+                    and show_instagram
                 ):
+                    filtered.append(
+                        lead
+                    )
 
-                    st.session_state[
-                        "selected_lead"
-                    ] = lead_id
+                elif (
+                    channel == "email"
+                    and show_email
+                ):
+                    filtered.append(
+                        lead
+                    )
 
-                    st.rerun()
+                elif (
+                    channel == "whatsapp"
+                    and show_whatsapp
+                ):
+                    filtered.append(
+                        lead
+                    )
+
+            if not filtered:
+
+                st.info(
+                    "No leads found."
+                )
+
+            else:
+
+                for lead in filtered:
+
+                    lead_id = lead.get(
+                        "lead_id",
+                        "unknown",
+                    )
+
+                    label = (
+                        f"{lead.get('channel', '').upper()}  "
+                        f"{lead_id}"
+                    )
+
+                    if st.button(
+                        label,
+                        key=f"lead_{lead_id}",
+                        use_container_width=True,
+                    ):
+
+                        st.session_state[
+                            "selected_lead"
+                        ] = lead_id
+
+                        st.rerun()
 
     # --------------------------------------------------------
     # SELECTED LEAD
@@ -321,17 +375,29 @@ with left:
 
     if not selected_lead:
 
+        # ----------------------------------------------------
+        # EMPTY MIDDLE
+        # ----------------------------------------------------
+
         with middle:
 
-            st.subheader("💬 Conversation")
+            st.subheader(
+                "💬 Conversation"
+            )
 
             st.info(
                 "Select a lead from the inbox."
             )
 
+        # ----------------------------------------------------
+        # EMPTY RIGHT
+        # ----------------------------------------------------
+
         with right:
 
-            st.subheader("📊 Lead")
+            st.subheader(
+                "📊 Lead"
+            )
 
             st.info(
                 "Select a lead to view details."
@@ -340,21 +406,25 @@ with left:
     else:
 
         # ----------------------------------------------------
-        # MIDDLE — Conversation
+        # MIDDLE — CONVERSATION
         # ----------------------------------------------------
 
         with middle:
 
-            st.subheader("💬 Conversation")
+            st.subheader(
+                "💬 Conversation"
+            )
 
             conversation = api_get(
-                f"/api/leads/{selected_lead}/conversation"
+                f"/api/leads/"
+                f"{selected_lead}/conversation"
             )
 
             if "error" in conversation:
 
                 st.info(
-                    "Conversation endpoint not available yet."
+                    "Conversation endpoint "
+                    "not available yet."
                 )
 
             else:
@@ -377,30 +447,42 @@ with left:
 
                     if direction == "inbound":
 
-                        with st.chat_message("user"):
-                            st.write(content)
+                        with st.chat_message(
+                            "user"
+                        ):
+                            st.write(
+                                content
+                            )
 
                     else:
 
-                        with st.chat_message("assistant"):
-                            st.write(content)
+                        with st.chat_message(
+                            "assistant"
+                        ):
+                            st.write(
+                                content
+                            )
 
         # ----------------------------------------------------
-        # RIGHT — Lead Control
+        # RIGHT — LEAD CONTROL
         # ----------------------------------------------------
 
         with right:
 
-            st.subheader("📊 Lead")
+            st.subheader(
+                "📊 Lead"
+            )
 
             lead = api_get(
-                f"/api/leads/{selected_lead}"
+                f"/api/leads/"
+                f"{selected_lead}"
             )
 
             if "error" in lead:
 
                 st.info(
-                    "Lead detail endpoint not available yet."
+                    "Lead detail endpoint "
+                    "not available yet."
                 )
 
             else:
@@ -433,7 +515,9 @@ with left:
                     {},
                 )
 
-                st.write("**Evidence**")
+                st.write(
+                    "**Evidence**"
+                )
 
                 evidence = qualification.get(
                     "evidence",
@@ -441,11 +525,17 @@ with left:
                 )
 
                 for item in evidence:
-                    st.write(f"• {item}")
+
+                    st.write(
+                        f"• {item}"
+                    )
 
                 st.divider()
 
-                # Human takeover
+                # ------------------------------------------------
+                # HUMAN TAKEOVER / AUTOMATION
+                # ------------------------------------------------
+
                 automation_enabled = lead.get(
                     "automation_enabled",
                     True,
@@ -460,7 +550,8 @@ with left:
                 if new_automation != automation_enabled:
 
                     result = api_post(
-                        f"/api/leads/{selected_lead}/automation",
+                        f"/api/leads/"
+                        f"{selected_lead}/automation",
                         {
                             "enabled": new_automation
                         },
@@ -486,44 +577,63 @@ with left:
 
     st.divider()
 
-    st.header("📅 Meeting")
+    st.header(
+        "📅 Meeting"
+    )
 
     booking_col1, booking_col2 = st.columns(2)
 
+    # --------------------------------------------------------
+    # BOOKING STATUS
+    # --------------------------------------------------------
+
     with booking_col1:
 
-        st.subheader("Booking status")
+        st.subheader(
+            "Booking status"
+        )
 
         if selected_lead:
 
             lead = api_get(
-                f"/api/leads/{selected_lead}"
+                f"/api/leads/"
+                f"{selected_lead}"
             )
 
-            pending = lead.get(
-                "pending_booking",
-                {},
-            )
+            if "error" in lead:
 
-            meeting_status = lead.get(
-                "meeting_status",
-                pending.get(
-                    "status",
-                    "none",
-                ),
-            )
-
-            st.metric(
-                "Meeting",
-                meeting_status,
-            )
-
-            if pending.get("slot"):
-
-                st.write(
-                    "**Selected slot:**",
-                    pending["slot"],
+                st.info(
+                    "Lead information unavailable."
                 )
+
+            else:
+
+                pending = lead.get(
+                    "pending_booking",
+                    {},
+                )
+
+                meeting_status = lead.get(
+                    "meeting_status",
+                    pending.get(
+                        "status",
+                        "none",
+                    ),
+                )
+
+                st.metric(
+                    "Meeting",
+                    meeting_status,
+                )
+
+                if pending.get(
+                    "slot"
+                ):
+
+                    st.write(
+                        "**Selected slot:**",
+                        pending["slot"],
+                    )
 
         else:
 
@@ -531,15 +641,23 @@ with left:
                 "Select a lead."
             )
 
+    # --------------------------------------------------------
+    # CALENDAR
+    # --------------------------------------------------------
+
     with booking_col2:
 
-        st.subheader("Calendar")
+        st.subheader(
+            "Calendar"
+        )
 
         calendar = api_get(
             "/debug/calendar/availability"
         )
 
-        if calendar.get("status") == "ok":
+        if calendar.get(
+            "status"
+        ) == "ok":
 
             st.success(
                 "Google Calendar connected"
@@ -557,18 +675,22 @@ with left:
 
     st.divider()
 
-    st.header("📝 Action Log")
+    st.header(
+        "📝 Action Log"
+    )
 
     if selected_lead:
 
         logs = api_get(
-            f"/api/leads/{selected_lead}/actions"
+            f"/api/leads/"
+            f"{selected_lead}/actions"
         )
 
         if "error" in logs:
 
             st.info(
-                "Action log endpoint not available yet."
+                "Action log endpoint "
+                "not available yet."
             )
 
         else:
@@ -598,7 +720,9 @@ with left:
 
 else:
 
-    st.header("Assignment 2")
+    st.header(
+        "Assignment 2"
+    )
 
     st.caption(
         "Three-agent meeting operations workflow: "
@@ -610,38 +734,70 @@ else:
     # ========================================================
 
     if "assignment2_run_id" not in st.session_state:
+
         st.session_state.assignment2_run_id = None
 
     if "assignment2_run" not in st.session_state:
+
         st.session_state.assignment2_run = None
 
     if "assignment2_session_id" not in st.session_state:
-        st.session_state.assignment2_session_id = "demo-session"
+
+        st.session_state.assignment2_session_id = (
+            "demo-session"
+        )
+
+    if "assignment2_transcript" not in st.session_state:
+
+        st.session_state.assignment2_transcript = ""
+
+    if "assignment2_rules" not in st.session_state:
+
+        st.session_state.assignment2_rules = ""
 
     # ========================================================
     # RUN CONFIGURATION
     # ========================================================
 
-    st.subheader("Run Configuration")
+    st.subheader(
+        "Run Configuration"
+    )
 
     config_col1, config_col2 = st.columns(2)
+
+    # --------------------------------------------------------
+    # SESSION ID
+    # --------------------------------------------------------
 
     with config_col1:
 
         session_id = st.text_input(
             "Session ID",
             value=st.session_state.assignment2_session_id,
-            help="Keeps this workflow run isolated from other sessions.",
+            help=(
+                "Keeps this workflow run isolated "
+                "from other sessions."
+            ),
         )
+
+    # --------------------------------------------------------
+    # BACKEND
+    # --------------------------------------------------------
 
     with config_col2:
 
-        st.write("Backend")
+        st.write(
+            "Backend"
+        )
 
         st.code(
             API_URL,
             language="text",
         )
+
+    # --------------------------------------------------------
+    # TRANSCRIPT
+    # --------------------------------------------------------
 
     transcript = st.text_area(
         "Meeting Transcript",
@@ -654,6 +810,10 @@ else:
             "",
         ),
     )
+
+    # --------------------------------------------------------
+    # COMPANY RULES
+    # --------------------------------------------------------
 
     company_rules = st.text_area(
         "Company Rules",
@@ -692,12 +852,16 @@ else:
         )
 
     # ========================================================
-    # START RUN
+    # START / RESET
     # ========================================================
 
     run_col1, run_col2 = st.columns(
         [1, 1]
     )
+
+    # --------------------------------------------------------
+    # RUN WORKFLOW BUTTON
+    # --------------------------------------------------------
 
     with run_col1:
 
@@ -706,6 +870,10 @@ else:
             type="primary",
             use_container_width=True,
         )
+
+    # --------------------------------------------------------
+    # RESET BUTTON
+    # --------------------------------------------------------
 
     with run_col2:
 
@@ -720,9 +888,15 @@ else:
         st.session_state.assignment2_run = None
         st.session_state.assignment2_transcript = ""
         st.session_state.assignment2_rules = ""
-        st.session_state.assignment2_session_id = "demo-session"
+        st.session_state.assignment2_session_id = (
+            "demo-session"
+        )
 
         st.rerun()
+
+    # ========================================================
+    # RUN WORKFLOW
+    # ========================================================
 
     if run_clicked:
 
@@ -749,7 +923,10 @@ else:
             failure_value = None
 
             if simulate_failure != "None":
-                failure_value = simulate_failure.lower()
+
+                failure_value = (
+                    simulate_failure.lower()
+                )
 
             payload = {
                 "transcript": transcript,
@@ -758,9 +935,17 @@ else:
                 "simulate_failure_at": failure_value,
             }
 
-            st.session_state.assignment2_session_id = session_id
-            st.session_state.assignment2_transcript = transcript
-            st.session_state.assignment2_rules = company_rules
+            st.session_state.assignment2_session_id = (
+                session_id
+            )
+
+            st.session_state.assignment2_transcript = (
+                transcript
+            )
+
+            st.session_state.assignment2_rules = (
+                company_rules
+            )
 
             with st.spinner(
                 "Running Intake → Planning → Review..."
@@ -785,7 +970,9 @@ else:
                     result.get("run_id")
                 )
 
-                st.session_state.assignment2_run = result
+                st.session_state.assignment2_run = (
+                    result
+                )
 
                 st.success(
                     f"Workflow started: "
@@ -799,6 +986,7 @@ else:
     # ========================================================
 
     run_id = st.session_state.assignment2_run_id
+
     run = st.session_state.assignment2_run
 
     if run_id and run is None:
@@ -813,7 +1001,9 @@ else:
 
             run = loaded
 
-            st.session_state.assignment2_run = loaded
+            st.session_state.assignment2_run = (
+                loaded
+            )
 
     # ========================================================
     # WORKFLOW DISPLAY
@@ -891,13 +1081,20 @@ else:
 
             failed_steps = [
                 step
-                for step in run.get("steps", [])
-                if step.get("status") == "FAILED"
+                for step in run.get(
+                    "steps",
+                    []
+                )
+                if step.get(
+                    "status"
+                ) == "FAILED"
             ]
 
             if failed_steps:
 
-                st.write("**Failed step(s)**")
+                st.write(
+                    "**Failed step(s)**"
+                )
 
                 for step in failed_steps:
 
@@ -919,8 +1116,12 @@ else:
                     resumed = api_post(
                         "/assignment2/runs/resume",
                         {
-                            "run_id": run.get("run_id"),
-                            "session_id": run.get("session_id"),
+                            "run_id": run.get(
+                                "run_id"
+                            ),
+                            "session_id": run.get(
+                                "session_id"
+                            ),
                         },
                         timeout=180,
                     )
@@ -934,7 +1135,9 @@ else:
 
                 else:
 
-                    st.session_state.assignment2_run = resumed
+                    st.session_state.assignment2_run = (
+                        resumed
+                    )
 
                     st.success(
                         "Run resumed successfully."
@@ -946,11 +1149,13 @@ else:
         # SOURCE FACTS
         # ====================================================
 
-        st.subheader("📚 Current Source Facts")
+        st.subheader(
+            "📚 Current Source Facts"
+        )
 
         st.caption(
-            "These are the structured facts currently authoritative "
-            "for downstream agents."
+            "These are the structured facts currently "
+            "authoritative for downstream agents."
         )
 
         source_facts = run.get(
@@ -979,8 +1184,7 @@ else:
                 )
 
                 with st.expander(
-                    f"{fact_id} · "
-                    f"{category.title()}",
+                    f"{fact_id} · {category.title()}",
                     expanded=False,
                 ):
 
@@ -991,145 +1195,264 @@ else:
                         )
                     )
 
-                    display_source_reference(fact)
-
-# ========================================================
-# FACT CORRECTION
-# ========================================================
-
-if source_facts:
-
-    with st.expander(
-        "✏️ Correct a Source Fact",
-        expanded=False,
-    ):
-
-        # Always read the current run from session state.
-        # Do not depend on a local `run` variable inside buttons.
-        current_run = st.session_state.get(
-            "assignment2_run"
-        )
-
-        if not current_run:
-
-            st.warning(
-                "No active Assignment 2 run."
-            )
-
-        else:
-
-            fact_options = [
-                fact.get(
-                    "fact_id",
-                    "unknown",
-                )
-                for fact in current_run.get(
-                    "source_facts",
-                    [],
-                )
-            ]
-
-            if not fact_options:
-
-                st.info(
-                    "No source facts available to correct."
-                )
-
-            else:
-
-                selected_fact_id = st.selectbox(
-                    "Fact",
-                    fact_options,
-                    key="assignment2_selected_fact",
-                )
-
-                selected_fact = next(
-                    (
+                    display_source_reference(
                         fact
+                    )
+
+        # ====================================================
+        # FACT CORRECTION
+        # ====================================================
+
+        if source_facts:
+
+            with st.expander(
+                "✏️ Correct a Source Fact",
+                expanded=False,
+            ):
+
+                current_run = st.session_state.get(
+                    "assignment2_run"
+                )
+
+                if not current_run:
+
+                    st.warning(
+                        "No active Assignment 2 run."
+                    )
+
+                else:
+
+                    fact_options = [
+                        fact.get(
+                            "fact_id",
+                            "unknown",
+                        )
                         for fact in current_run.get(
                             "source_facts",
                             [],
                         )
-                        if fact.get("fact_id")
-                        == selected_fact_id
-                    ),
-                    None,
-                )
+                    ]
 
-                current_content = ""
+                    if not fact_options:
 
-                if selected_fact:
-
-                    current_content = selected_fact.get(
-                        "content",
-                        "",
-                    )
-
-                corrected_content = st.text_input(
-                    "Corrected fact",
-                    value=current_content,
-                    key="assignment2_corrected_fact",
-                )
-
-                st.caption(
-                    "Correcting a fact creates a new source "
-                    "version and marks previous agent outputs stale."
-                )
-
-                if st.button(
-                    "Apply Fact Correction",
-                    type="primary",
-                    use_container_width=True,
-                    key=f"apply_fact_correction_{run.get('run_id')}_{selected_fact_id}",
-                ):
-
-                    correction_result = api_post(
-                        "/assignment2/runs/correct-fact",
-                        {
-                            "run_id": current_run.get(
-                                "run_id"
-                            ),
-                            "session_id": current_run.get(
-                                "session_id"
-                            ),
-                            "fact_id": selected_fact_id,
-                            "new_content": corrected_content,
-                        },
-                        timeout=30,
-                    )
-
-                    if "error" in correction_result:
-
-                        st.error(
-                            "Could not correct the source fact."
-                        )
-
-                        st.code(
-                            correction_result.get(
-                                "error",
-                                "Unknown error",
-                            )
+                        st.info(
+                            "No source facts available to correct."
                         )
 
                     else:
 
-                        # Refresh the same run.
-                        refreshed = api_get(
-                            f"/assignment2/runs/"
-                            f"{current_run.get('run_id')}"
-                            f"?session_id="
-                            f"{current_run.get('session_id')}"
+                        selected_fact_id = st.selectbox(
+                            "Fact",
+                            fact_options,
+                            key="assignment2_selected_fact",
                         )
 
-                        if "error" in refreshed:
+                        selected_fact = next(
+                            (
+                                fact
+                                for fact in current_run.get(
+                                    "source_facts",
+                                    [],
+                                )
+                                if fact.get(
+                                    "fact_id"
+                                ) == selected_fact_id
+                            ),
+                            None,
+                        )
+
+                        current_content = ""
+
+                        if selected_fact:
+
+                            current_content = (
+                                selected_fact.get(
+                                    "content",
+                                    "",
+                                )
+                            )
+
+                        corrected_content = st.text_input(
+                            "Corrected fact",
+                            value=current_content,
+                            key="assignment2_corrected_fact",
+                        )
+
+                        st.caption(
+                            "Correcting a fact creates a new source "
+                            "version and marks previous agent outputs stale."
+                        )
+
+                        if st.button(
+                            "Apply Fact Correction",
+                            type="primary",
+                            use_container_width=True,
+                            key=(
+                                f"apply_fact_correction_"
+                                f"{current_run.get('run_id')}_"
+                                f"{selected_fact_id}"
+                            ),
+                        ):
+
+                            correction_result = api_post(
+                                "/assignment2/runs/correct-fact",
+                                {
+                                    "run_id": current_run.get(
+                                        "run_id"
+                                    ),
+                                    "session_id": current_run.get(
+                                        "session_id"
+                                    ),
+                                    "fact_id": selected_fact_id,
+                                    "new_content": corrected_content,
+                                },
+                                timeout=30,
+                            )
+
+                            if "error" in correction_result:
+
+                                st.error(
+                                    "Could not correct the source fact."
+                                )
+
+                                st.code(
+                                    correction_result.get(
+                                        "error",
+                                        "Unknown error",
+                                    )
+                                )
+
+                            else:
+
+                                refreshed = api_get(
+                                    f"/assignment2/runs/"
+                                    f"{current_run.get('run_id')}"
+                                    f"?session_id="
+                                    f"{current_run.get('session_id')}"
+                                )
+
+                                if "error" in refreshed:
+
+                                    st.error(
+                                        "Fact was corrected, but the "
+                                        "updated run could not be loaded."
+                                    )
+
+                                    st.code(
+                                        refreshed.get(
+                                            "error",
+                                            "Unknown error",
+                                        )
+                                    )
+
+                                else:
+
+                                    st.session_state.assignment2_run = (
+                                        refreshed
+                                    )
+
+                                    st.session_state.assignment2_run_id = (
+                                        refreshed.get(
+                                            "run_id"
+                                        )
+                                    )
+
+                                    st.success(
+                                        f"Source fact corrected. "
+                                        f"Source version is now "
+                                        f"v{refreshed.get('source_version')}."
+                                    )
+
+                                    st.rerun()
+
+        # ====================================================
+        # RERUN STALE WORKFLOW
+        # ====================================================
+
+        latest_run = st.session_state.get(
+            "assignment2_run"
+        )
+
+        if latest_run:
+
+            latest_status = latest_run.get(
+                "status"
+            )
+
+            latest_version = latest_run.get(
+                "source_version",
+                1,
+            )
+
+            has_stale_steps = any(
+                step.get("status") == "STALE"
+                for step in latest_run.get(
+                    "steps",
+                    [],
+                )
+            )
+
+            if (
+                latest_version > 1
+                and has_stale_steps
+                and latest_status == "RUNNING"
+            ):
+
+                st.divider()
+
+                st.warning(
+                    f"Source facts changed to v{latest_version}. "
+                    "Previous agent outputs are stale."
+                )
+
+                if st.button(
+                    "▶️ Rerun Corrected Workflow",
+                    type="primary",
+                    use_container_width=True,
+                    key=(
+                        f"rerun_corrected_"
+                        f"{latest_run.get('run_id')}"
+                    ),
+                ):
+
+                    rerun_run = st.session_state.get(
+                        "assignment2_run"
+                    )
+
+                    if not rerun_run:
+
+                        st.error(
+                            "No active run available."
+                        )
+
+                    else:
+
+                        with st.spinner(
+                            "Rerunning Intake → Planning → Review "
+                            "using the corrected source facts..."
+                        ):
+
+                            resumed = api_post(
+                                "/assignment2/runs/resume",
+                                {
+                                    "run_id": rerun_run.get(
+                                        "run_id"
+                                    ),
+                                    "session_id": rerun_run.get(
+                                        "session_id"
+                                    ),
+                                },
+                                timeout=180,
+                            )
+
+                        if "error" in resumed:
 
                             st.error(
-                                "Fact was corrected, but the "
-                                "updated run could not be loaded."
+                                "Could not rerun the corrected workflow."
                             )
 
                             st.code(
-                                refreshed.get(
+                                resumed.get(
                                     "error",
                                     "Unknown error",
                                 )
@@ -1138,129 +1461,20 @@ if source_facts:
                         else:
 
                             st.session_state.assignment2_run = (
-                                refreshed
+                                resumed
                             )
 
                             st.session_state.assignment2_run_id = (
-                                refreshed.get("run_id")
+                                resumed.get(
+                                    "run_id"
+                                )
                             )
 
                             st.success(
-                                f"Source fact corrected. "
-                                f"Source version is now "
-                                f"v{refreshed.get('source_version')}."
+                                "Corrected workflow completed."
                             )
 
                             st.rerun()
-
-            # ------------------------------------------------
-            # RERUN STALE WORKFLOW
-            # ------------------------------------------------
-
-            latest_run = st.session_state.get(
-                "assignment2_run"
-            )
-
-            if latest_run:
-
-                latest_status = latest_run.get(
-                    "status"
-                )
-
-                latest_version = latest_run.get(
-                    "source_version",
-                    1,
-                )
-
-                has_stale_steps = any(
-                    step.get("status") == "STALE"
-                    for step in latest_run.get(
-                        "steps",
-                        [],
-                    )
-                )
-
-                if (
-                    latest_version > 1
-                    and has_stale_steps
-                    and latest_status == "RUNNING"
-                ):
-
-                    st.divider()
-
-                    st.warning(
-                        f"Source facts changed to v{latest_version}. "
-                        "Previous agent outputs are stale."
-                    )
-
-                    if st.button(
-                        "▶️ Rerun Corrected Workflow",
-                        type="primary",
-                        use_container_width=True,
-                        key=f"rerun_corrected_{latest_run.get('run_id')}",
-                    ):
-
-                        # IMPORTANT:
-                        # Read the run directly from session state
-                        # inside the button action.
-                        rerun_run = st.session_state.get(
-                            "assignment2_run"
-                        )
-
-                        if not rerun_run:
-
-                            st.error(
-                                "No active run available."
-                            )
-
-                        else:
-
-                            with st.spinner(
-                                "Rerunning Intake → Planning → Review "
-                                "using the corrected source facts..."
-                            ):
-
-                                resumed = api_post(
-                                    "/assignment2/runs/resume",
-                                    {
-                                        "run_id": rerun_run.get(
-                                            "run_id"
-                                        ),
-                                        "session_id": rerun_run.get(
-                                            "session_id"
-                                        ),
-                                    },
-                                    timeout=180,
-                                )
-
-                            if "error" in resumed:
-
-                                st.error(
-                                    "Could not rerun the corrected workflow."
-                                )
-
-                                st.code(
-                                    resumed.get(
-                                        "error",
-                                        "Unknown error",
-                                    )
-                                )
-
-                            else:
-
-                                st.session_state.assignment2_run = (
-                                    resumed
-                                )
-
-                                st.session_state.assignment2_run_id = (
-                                    resumed.get("run_id")
-                                )
-
-                                st.success(
-                                    "Corrected workflow completed."
-                                )
-
-                                st.rerun()
 
         # ====================================================
         # WORKFLOW TRACE
@@ -1268,7 +1482,9 @@ if source_facts:
 
         st.divider()
 
-        st.subheader("🔎 Agent Workflow")
+        st.subheader(
+            "🔎 Agent Workflow"
+        )
 
         intake_steps = get_agent_steps(
             run,
@@ -1285,11 +1501,15 @@ if source_facts:
             "review",
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # INTAKE
-        # ----------------------------------------------------
+        # ====================================================
 
-        intake_step = intake_steps[-1] if intake_steps else None
+        intake_step = (
+            intake_steps[-1]
+            if intake_steps
+            else None
+        )
 
         with st.expander(
             "1️⃣ Intake Agent",
@@ -1322,7 +1542,9 @@ if source_facts:
                     f"v{intake_step.get('output_version', '?')}"
                 )
 
-                if intake_step.get("error"):
+                if intake_step.get(
+                    "error"
+                ):
 
                     st.error(
                         intake_step["error"]
@@ -1337,11 +1559,19 @@ if source_facts:
 
                 if intake_output:
 
-                    intake_col1, intake_col2 = st.columns(2)
+                    intake_col1, intake_col2 = (
+                        st.columns(2)
+                    )
+
+                    # ------------------------------------------------
+                    # DECISIONS + REQUIREMENTS
+                    # ------------------------------------------------
 
                     with intake_col1:
 
-                        st.write("**Decisions**")
+                        st.write(
+                            "**Decisions**"
+                        )
 
                         decisions = intake_output.get(
                             "decisions",
@@ -1366,7 +1596,9 @@ if source_facts:
                                 "None identified."
                             )
 
-                        st.write("**Requirements**")
+                        st.write(
+                            "**Requirements**"
+                        )
 
                         requirements = intake_output.get(
                             "requirements",
@@ -1391,9 +1623,15 @@ if source_facts:
                                 "None identified."
                             )
 
+                    # ------------------------------------------------
+                    # CONSTRAINTS + MISSING + CONFLICTS
+                    # ------------------------------------------------
+
                     with intake_col2:
 
-                        st.write("**Constraints**")
+                        st.write(
+                            "**Constraints**"
+                        )
 
                         constraints = intake_output.get(
                             "constraints",
@@ -1443,7 +1681,9 @@ if source_facts:
                                 "None identified."
                             )
 
-                        st.write("**Conflicts**")
+                        st.write(
+                            "**Conflicts**"
+                        )
 
                         conflicts = intake_output.get(
                             "conflicts",
@@ -1464,22 +1704,29 @@ if source_facts:
                                 "None identified."
                             )
 
-        # ----------------------------------------------------
+        # ====================================================
         # INTAKE → PLANNING HANDOFF
-        # ----------------------------------------------------
+        # ====================================================
 
         intake_handoffs = [
             handoff
-            for handoff in run.get("handoffs", [])
+            for handoff in run.get(
+                "handoffs",
+                []
+            )
             if (
-                handoff.get("from_agent") == "intake"
-                and handoff.get("to_agent") == "planning"
+                handoff.get("from_agent")
+                == "intake"
+                and handoff.get("to_agent")
+                == "planning"
             )
         ]
 
         if intake_handoffs:
 
-            latest_handoff = intake_handoffs[-1]
+            latest_handoff = (
+                intake_handoffs[-1]
+            )
 
             st.caption(
                 "🔗 Intake → Planning · "
@@ -1488,9 +1735,9 @@ if source_facts:
                 f"{latest_handoff.get('validation_status', 'UNKNOWN')}"
             )
 
-        # ----------------------------------------------------
+        # ====================================================
         # PLANNING
-        # ----------------------------------------------------
+        # ====================================================
 
         with st.expander(
             "2️⃣ Planning Agent",
@@ -1516,9 +1763,11 @@ if source_facts:
                             f"{planning_step.get('attempt', index + 1)}**"
                         )
 
-                    planning_status = planning_step.get(
-                        "status",
-                        "UNKNOWN",
+                    planning_status = (
+                        planning_step.get(
+                            "status",
+                            "UNKNOWN",
+                        )
                     )
 
                     st.write(
@@ -1533,7 +1782,9 @@ if source_facts:
                         f"v{planning_step.get('output_version', '?')}"
                     )
 
-                    if planning_step.get("error"):
+                    if planning_step.get(
+                        "error"
+                    ):
 
                         st.error(
                             planning_step["error"]
@@ -1587,9 +1838,16 @@ if source_facts:
                                 f"**{task_id} — {task_name}**"
                             )
 
-                            task_col1, task_col2, task_col3, task_col4 = (
-                                st.columns(4)
-                            )
+                            (
+                                task_col1,
+                                task_col2,
+                                task_col3,
+                                task_col4,
+                            ) = st.columns(4)
+
+                            # ----------------------------------------
+                            # OWNER
+                            # ----------------------------------------
 
                             with task_col1:
 
@@ -1601,6 +1859,10 @@ if source_facts:
                                     owner or "Unassigned"
                                 )
 
+                            # ----------------------------------------
+                            # DEADLINE
+                            # ----------------------------------------
+
                             with task_col2:
 
                                 st.write(
@@ -1610,6 +1872,10 @@ if source_facts:
                                 st.write(
                                     deadline or "Not specified"
                                 )
+
+                            # ----------------------------------------
+                            # DEPENDENCIES
+                            # ----------------------------------------
 
                             with task_col3:
 
@@ -1630,6 +1896,10 @@ if source_facts:
                                     st.write(
                                         "None"
                                     )
+
+                            # ----------------------------------------
+                            # BASIS
+                            # ----------------------------------------
 
                             with task_col4:
 
@@ -1652,19 +1922,25 @@ if source_facts:
                             "No tasks produced."
                         )
 
-                    supported_facts = planning_output.get(
-                        "supported_facts",
-                        [],
+                    supported_facts = (
+                        planning_output.get(
+                            "supported_facts",
+                            [],
+                        )
                     )
 
-                    recommendations = planning_output.get(
-                        "recommendations",
-                        [],
+                    recommendations = (
+                        planning_output.get(
+                            "recommendations",
+                            [],
+                        )
                     )
 
-                    unresolved_questions = planning_output.get(
-                        "unresolved_questions",
-                        [],
+                    unresolved_questions = (
+                        planning_output.get(
+                            "unresolved_questions",
+                            [],
+                        )
                     )
 
                     if supported_facts:
@@ -1703,26 +1979,35 @@ if source_facts:
                                 f"• {item}"
                             )
 
-                    if index < len(planning_steps) - 1:
+                    if index < len(
+                        planning_steps
+                    ) - 1:
 
                         st.divider()
 
-        # ----------------------------------------------------
+        # ====================================================
         # PLANNING → REVIEW HANDOFF
-        # ----------------------------------------------------
+        # ====================================================
 
         planning_handoffs = [
             handoff
-            for handoff in run.get("handoffs", [])
+            for handoff in run.get(
+                "handoffs",
+                []
+            )
             if (
-                handoff.get("from_agent") == "planning"
-                and handoff.get("to_agent") == "review"
+                handoff.get("from_agent")
+                == "planning"
+                and handoff.get("to_agent")
+                == "review"
             )
         ]
 
         if planning_handoffs:
 
-            latest_handoff = planning_handoffs[-1]
+            latest_handoff = (
+                planning_handoffs[-1]
+            )
 
             st.caption(
                 "🔗 Planning → Review · "
@@ -1731,9 +2016,9 @@ if source_facts:
                 f"{latest_handoff.get('validation_status', 'UNKNOWN')}"
             )
 
-        # ----------------------------------------------------
+        # ====================================================
         # REVIEW
-        # ----------------------------------------------------
+        # ====================================================
 
         with st.expander(
             "3️⃣ Review Agent",
@@ -1759,9 +2044,11 @@ if source_facts:
                             f"{review_step.get('attempt', index + 1)}**"
                         )
 
-                    review_status = review_step.get(
-                        "status",
-                        "UNKNOWN",
+                    review_status = (
+                        review_step.get(
+                            "status",
+                            "UNKNOWN",
+                        )
                     )
 
                     st.write(
@@ -1776,7 +2063,9 @@ if source_facts:
                         or {}
                     )
 
-                    if review_step.get("error"):
+                    if review_step.get(
+                        "error"
+                    ):
 
                         st.error(
                             review_step["error"]
@@ -1784,9 +2073,11 @@ if source_facts:
 
                     if review_output:
 
-                        decision = review_output.get(
-                            "status",
-                            "UNKNOWN",
+                        decision = (
+                            review_output.get(
+                                "status",
+                                "UNKNOWN",
+                            )
                         )
 
                         if decision == "PASS":
@@ -1801,9 +2092,11 @@ if source_facts:
                                 "REVIEW FAIL"
                             )
 
-                        corrections = review_output.get(
-                            "corrections",
-                            [],
+                        corrections = (
+                            review_output.get(
+                                "corrections",
+                                [],
+                            )
                         )
 
                         if corrections:
@@ -1823,9 +2116,11 @@ if source_facts:
                                     "task_id"
                                 )
 
-                                correction_text = correction.get(
-                                    "correction",
-                                    "",
+                                correction_text = (
+                                    correction.get(
+                                        "correction",
+                                        "",
+                                    )
                                 )
 
                                 evidence = correction.get(
@@ -1854,9 +2149,11 @@ if source_facts:
                                         f"Evidence: {evidence}"
                                     )
 
-                        unresolved_issues = review_output.get(
-                            "unresolved_issues",
-                            [],
+                        unresolved_issues = (
+                            review_output.get(
+                                "unresolved_issues",
+                                [],
+                            )
                         )
 
                         if unresolved_issues:
@@ -1871,20 +2168,27 @@ if source_facts:
                                     issue
                                 )
 
-                    if index < len(review_steps) - 1:
+                    if index < len(
+                        review_steps
+                    ) - 1:
 
                         st.divider()
 
-        # ----------------------------------------------------
+        # ====================================================
         # REVIEW → PLANNING CORRECTION HANDOFF
-        # ----------------------------------------------------
+        # ====================================================
 
         correction_handoffs = [
             handoff
-            for handoff in run.get("handoffs", [])
+            for handoff in run.get(
+                "handoffs",
+                []
+            )
             if (
-                handoff.get("from_agent") == "review"
-                and handoff.get("to_agent") == "planning"
+                handoff.get("from_agent")
+                == "review"
+                and handoff.get("to_agent")
+                == "planning"
             )
         ]
 
@@ -1895,7 +2199,9 @@ if source_facts:
                 f"{len(correction_handoffs)}"
             )
 
-            latest_correction = correction_handoffs[-1]
+            latest_correction = (
+                correction_handoffs[-1]
+            )
 
             with st.expander(
                 "View latest correction handoff",
@@ -1915,7 +2221,9 @@ if source_facts:
 
         st.divider()
 
-        st.subheader("🔗 Handoff Trace")
+        st.subheader(
+            "🔗 Handoff Trace"
+        )
 
         handoffs = run.get(
             "handoffs",
@@ -1963,7 +2271,8 @@ if source_facts:
                         f"{from_agent.title()} → "
                         f"{to_agent.title()} · "
                         f"VALID · "
-                        f"v{input_version} → v{output_version}"
+                        f"v{input_version} → "
+                        f"v{output_version}"
                     )
 
                 else:
@@ -1972,7 +2281,8 @@ if source_facts:
                         f"{from_agent.title()} → "
                         f"{to_agent.title()} · "
                         f"{validation} · "
-                        f"v{input_version} → v{output_version}"
+                        f"v{input_version} → "
+                        f"v{output_version}"
                     )
 
         # ====================================================
@@ -1981,7 +2291,9 @@ if source_facts:
 
         st.divider()
 
-        st.subheader("📋 Final Plan")
+        st.subheader(
+            "📋 Final Plan"
+        )
 
         final_plan = run.get(
             "final_plan"
@@ -2030,29 +2342,50 @@ if source_facts:
                         f"### {task_id} — {task_name}"
                     )
 
-                    final_col1, final_col2, final_col3, final_col4 = (
-                        st.columns(4)
-                    )
+                    (
+                        final_col1,
+                        final_col2,
+                        final_col3,
+                        final_col4,
+                    ) = st.columns(4)
+
+                    # --------------------------------------------
+                    # OWNER
+                    # --------------------------------------------
 
                     with final_col1:
 
-                        st.write("**Owner**")
+                        st.write(
+                            "**Owner**"
+                        )
 
                         st.write(
                             owner or "Unassigned"
                         )
 
+                    # --------------------------------------------
+                    # DEADLINE
+                    # --------------------------------------------
+
                     with final_col2:
 
-                        st.write("**Deadline**")
+                        st.write(
+                            "**Deadline**"
+                        )
 
                         st.write(
                             deadline or "Not specified"
                         )
 
+                    # --------------------------------------------
+                    # DEPENDENCIES
+                    # --------------------------------------------
+
                     with final_col3:
 
-                        st.write("**Dependencies**")
+                        st.write(
+                            "**Dependencies**"
+                        )
 
                         if dependencies:
 
@@ -2068,9 +2401,15 @@ if source_facts:
                                 "None"
                             )
 
+                    # --------------------------------------------
+                    # BASIS
+                    # --------------------------------------------
+
                     with final_col4:
 
-                        st.write("**Basis**")
+                        st.write(
+                            "**Basis**"
+                        )
 
                         st.write(
                             basis.replace(
@@ -2093,8 +2432,8 @@ if source_facts:
             if status == "UNRESOLVED":
 
                 st.warning(
-                    "The review loop reached its bounded attempt "
-                    "limit. No final plan was accepted."
+                    "The review loop reached its bounded "
+                    "attempt limit. No final plan was accepted."
                 )
 
             elif status == "FAILED":
@@ -2112,12 +2451,16 @@ if source_facts:
                 )
 
         # ====================================================
-        # REFRESH / LOAD RUN
+        # REFRESH / NEW RUN
         # ====================================================
 
         st.divider()
 
         refresh_col1, refresh_col2 = st.columns(2)
+
+        # ----------------------------------------------------
+        # REFRESH RUN
+        # ----------------------------------------------------
 
         with refresh_col1:
 
@@ -2129,7 +2472,8 @@ if source_facts:
                 refreshed = api_get(
                     f"/assignment2/runs/"
                     f"{run.get('run_id')}"
-                    f"?session_id={run.get('session_id')}"
+                    f"?session_id="
+                    f"{run.get('session_id')}"
                 )
 
                 if show_api_error(
@@ -2147,6 +2491,10 @@ if source_facts:
 
                     st.rerun()
 
+        # ----------------------------------------------------
+        # START NEW RUN
+        # ----------------------------------------------------
+
         with refresh_col2:
 
             if st.button(
@@ -2154,24 +2502,30 @@ if source_facts:
                 use_container_width=True,
             ):
 
-                st.session_state.assignment2_run_id = None
-                st.session_state.assignment2_run = None
+                st.session_state.assignment2_run_id = (
+                    None
+                )
+
+                st.session_state.assignment2_run = (
+                    None
+                )
 
                 st.rerun()
-            else:
 
-        # ====================================================
-        # EMPTY ASSIGNMENT 2 STATE
-        # ====================================================
+    # ========================================================
+    # EMPTY ASSIGNMENT 2 STATE
+    # ========================================================
 
-                st.divider()
+    else:
 
-                st.info(
+        st.divider()
+
+        st.info(
             "Enter a meeting transcript and company rules, "
             "then run the workflow."
-            )
+        )
 
-                st.markdown(
+        st.markdown(
             """
             **Workflow**
 
@@ -2184,4 +2538,4 @@ if source_facts:
             If Review finds a problem, the correction is sent
             back to Planning and the bounded review loop runs again.
             """
-            )
+        )

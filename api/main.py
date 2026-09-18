@@ -66,54 +66,20 @@ class WhatsAppTestRequest(BaseModel):
     message: str
 
 
-@app.post("/debug/whatsapp/send")
-async def test_whatsapp_send(request: WhatsAppTestRequest):
-    adapter = WhatsAppAdapter()
 
-    result = adapter.send(
-        recipient=request.to,
-        message=request.message,
-    )
-
-    return result
 
 class InstagramTestRequest(BaseModel):
     to: str
     message: str
 
 
-@app.post("/debug/instagram/send")
-async def test_instagram_send(request: InstagramTestRequest):
-    adapter = InstagramAdapter()
 
-    return adapter.send(
-        recipient=request.to,
-        message=request.message,
-    )
 
 class GmailTestRequest(BaseModel):
     to: str
     subject: str
     message: str
 
-
-@app.post("/debug/gmail/send")
-async def test_gmail_send(request: GmailTestRequest):
-    adapter = GmailAdapter(google_tokens)
-
-    return adapter.send(
-        recipient=request.to,
-        subject=request.subject,
-        message=request.message,
-    )
-
-
-@app.get("/debug/gemini")
-async def debug_gemini():
-    response = generate_response(
-        "Reply with exactly: Gemini connection works."
-    )
-    return {"response": response}
 
 @app.get("/auth/google/callback")
 async def google_callback(code: str | None = None):
@@ -171,7 +137,7 @@ async def google_login():
 
     return RedirectResponse(url)
 
-@app.get("/debug/gmail/inbox") #this endpoint is for debugging and testing Gmail inbox polling
+
 async def gmail_inbox(): #Returns the latest 10 emails from the Gmail inbox and saves them to MongoDB if they are new
     return await poll_gmail_inbox() 
 
@@ -216,6 +182,7 @@ async def poll_gmail_inbox():
 
             gmail_message_id = item["id"]
 
+            # Prevent processing the same Gmail message more than once.
             existing_message = shared.mongo.messages_collection.find_one({
                 "channel": "email",
                 "provider_message_id": gmail_message_id,
@@ -238,7 +205,10 @@ async def poll_gmail_inbox():
             sender = headers.get("From", "")
             sender_name, sender_email = parseaddr(sender)
 
-            if sender_email.lower() == "ai.sales.assistant.test@gmail.com":
+            sender_email = sender_email.strip().lower()
+
+            # Ignore emails sent by the assistant itself.
+            if sender_email == "ai.sales.assistant.test@gmail.com":
                 continue
 
             subject = headers.get("Subject", "")
@@ -256,6 +226,7 @@ async def poll_gmail_inbox():
 
             elif payload.get("parts"):
                 for part in payload["parts"]:
+
                     if part.get("mimeType") == "text/plain":
                         data = part.get("body", {}).get("data")
 
@@ -268,10 +239,15 @@ async def poll_gmail_inbox():
 
                         break
 
-            lead_id = f"email_{sender_email.lower()}"
+            body = body.strip()
+
+            lead_id = f"email_{sender_email}"
             conversation_id = f"email_{item['threadId']}"
 
-            # Get or create lead
+            # ---------------------------------------------------------
+            # GET OR CREATE LEAD
+            # ---------------------------------------------------------
+
             lead = shared.mongo.get_lead(lead_id)
 
             if not lead:
@@ -285,7 +261,10 @@ async def poll_gmail_inbox():
                 shared.mongo.create_lead(lead_obj.model_dump())
                 lead = lead_obj.model_dump()
 
-            # Get or create conversation
+            # ---------------------------------------------------------
+            # GET OR CREATE CONVERSATION
+            # ---------------------------------------------------------
+
             conversation = shared.mongo.get_conversation(conversation_id)
 
             if not conversation:
@@ -300,7 +279,10 @@ async def poll_gmail_inbox():
                     conversation_obj.model_dump()
                 )
 
-            # Save inbound
+            # ---------------------------------------------------------
+            # SAVE INBOUND MESSAGE
+            # ---------------------------------------------------------
+
             message = Message(
                 conversation_id=conversation_id,
                 lead_id=lead_id,
@@ -313,163 +295,302 @@ async def poll_gmail_inbox():
 
             shared.mongo.create_message(message.model_dump())
 
-            print("EMAIL MESSAGE SAVED TO MONGODB")
-
-            # Human takeover
-            if not lead.get("automation_enabled", True):
-                print("AUTOMATION DISABLED - HUMAN TAKEOVER")
-                continue
-
-            # Refresh lead because previous messages may have changed it
+            # Refresh lead after message persistence.
             lead = shared.mongo.get_lead(lead_id)
 
-            # =====================================================
-            # BOOKING FLOW
-            # =====================================================
+            # ---------------------------------------------------------
+            # HUMAN TAKEOVER
+            # ---------------------------------------------------------
 
-            selected_slot = get_selected_booking_slot(
-                lead,
-                body
-            )
+            if not lead.get("automation_enabled", True):
+                messages.append({
+                    "id": gmail_message_id,
+                    "from": sender,
+                    "subject": subject,
+                    "saved": True,
+                    "automation": "disabled",
+                })
+                continue
 
-            if selected_slot:
+            # ---------------------------------------------------------
+            # ALREADY BOOKED
+            #
+            # Once a meeting is confirmed, do NOT enter the scheduling
+            # flow again on later emails.
+            # ---------------------------------------------------------
 
-                shared.mongo.update_lead(
-                    lead_id,
-                    {
-                        "pending_booking": {
-                            "slot": selected_slot,
-                            "status": "awaiting_confirmation",
-                        }
-                    },
-                )
+            existing_booking = shared.mongo.get_booking_by_lead(lead_id)
 
-                slot_time = datetime.fromisoformat(selected_slot)
+            if (
+                existing_booking
+                and existing_booking.get("status") == "confirmed"
+            ) or lead.get("meeting_status") == "confirmed":
 
-                reply = (
-                    f"You selected {slot_time.strftime('%A, %d %B at %H:%M')}. "
-                    "Would you like me to confirm this booking?"
-                )
+                start_time = None
 
-            elif lead.get("pending_booking", {}).get("status") == "awaiting_confirmation":
+                if existing_booking:
+                    existing_start = existing_booking.get("start_time")
 
-                if is_booking_confirmation(body):
+                    if existing_start:
+                        if isinstance(existing_start, datetime):
+                            start_time = existing_start
+                        else:
+                            try:
+                                start_time = datetime.fromisoformat(
+                                    str(existing_start)
+                                )
+                            except Exception:
+                                start_time = None
 
-                    pending = lead["pending_booking"]
-                    selected_slot = pending["slot"]
-
-                    start_time = datetime.fromisoformat(
-                        selected_slot
-                    )
-
-                    booking_result = book_meeting(
-                        lead_id=lead_id,
-                        conversation_id=conversation_id,
-                        attendee_email=sender_email,
-                        start_time=start_time,
-                        duration_minutes=30,
-                        google_tokens_collection=google_tokens,
-                    )
-
-                    print("GMAIL BOOKING RESULT:", booking_result)
-
-                    if booking_result["status"] == "confirmed":
-
-                        shared.mongo.update_lead(
-                            lead_id,
-                            {
-                                "pending_booking": {
-                                    "slot": selected_slot,
-                                    "status": "confirmed",
-                                },
-                                "meeting_status": "confirmed",
-                            },
-                        )
-
-                        reply = (
-                            f"Your consultation is confirmed for "
-                            f"{start_time.strftime('%A, %d %B at %H:%M')}."
-                        )
-
-                    elif booking_result["status"] == "already_booked":
-
-                        shared.mongo.update_lead(
-                            lead_id,
-                            {
-                                "pending_booking": {
-                                    "slot": selected_slot,
-                                    "status": "confirmed",
-                                },
-                                "meeting_status": "confirmed",
-                            },
-                        )
-
-                        reply = "This consultation has already been booked."
-
-                    else:
-
-                        shared.mongo.update_lead(
-                            lead_id,
-                            {
-                                "pending_booking": {
-                                    "status": "slot_unavailable",
-                                }
-                            },
-                        )
-
-                        reply = (
-                            "Sorry, that slot is no longer available. "
-                            "Please choose another available time."
-                        )
-
-                else:
-
+                if start_time:
                     reply = (
-                        "Please reply with 'yes' to confirm the selected "
-                        "time, or choose another available slot."
+                        "Your consultation is already confirmed for "
+                        f"{start_time.strftime('%A, %d %B at %H:%M')}. "
+                        "If you have another question, I'm happy to help."
+                    )
+                else:
+                    reply = (
+                        "Your consultation is already confirmed. "
+                        "If you have another question, I'm happy to help."
                     )
 
             else:
 
-                # =================================================
-                # QUALIFICATION
-                # =================================================
+                # -----------------------------------------------------
+                # BOOKING STATE
+                # -----------------------------------------------------
 
-                qualification = qualify_lead(
-                    conversation_id=conversation_id,
-                    new_message=body,
-                )
+                pending_booking = lead.get("pending_booking") or {}
+                pending_status = pending_booking.get("status")
 
-                print("GMAIL QUALIFICATION:", qualification)
+                # -----------------------------------------------------
+                # STEP 1: CUSTOMER SELECTED 1 / 2 / 3
+                # -----------------------------------------------------
 
-                status = qualification["qualification"]["status"]
+                if pending_status == "awaiting_selection":
 
-                if status == "needs_information":
-
-                    reply = qualification["qualification"]["follow_up"]
-
-                elif status == "qualified":
-
-                    reply = qualification["qualification"]["slot_message"]
-
-                elif status == "not_qualified":
-
-                    reply = (
-                        "Thank you for sharing those details. "
-                        "Unfortunately, your requirements do not meet "
-                        "our current qualification criteria."
+                    selected_slot = get_selected_booking_slot(
+                        lead,
+                        body
                     )
+
+                    if selected_slot:
+
+                        shared.mongo.update_lead(
+                            lead_id,
+                            {
+                                "pending_booking": {
+                                    "slot": selected_slot,
+                                    "status": "awaiting_confirmation",
+                                },
+                                "updated_at": datetime.utcnow(),
+                            }
+                        )
+
+                        slot_time = datetime.fromisoformat(selected_slot)
+
+                        reply = (
+                            f"You selected {slot_time.strftime('%A, %d %B at %H:%M')}. "
+                            "Would you like me to confirm this booking?"
+                        )
+
+                    else:
+
+                        # Do not regenerate slots unnecessarily.
+                        reply = (
+                            "Please reply with 1, 2, or 3 to select "
+                            "one of the available meeting times."
+                        )
+
+                # -----------------------------------------------------
+                # STEP 2: CUSTOMER CONFIRMS SELECTED SLOT
+                # -----------------------------------------------------
+
+                elif pending_status == "awaiting_confirmation":
+
+                    if is_booking_confirmation(body):
+
+                        selected_slot = pending_booking.get("slot")
+
+                        if not selected_slot:
+                            shared.mongo.update_lead(
+                                lead_id,
+                                {
+                                    "pending_booking": None,
+                                    "updated_at": datetime.utcnow(),
+                                }
+                            )
+
+                            reply = (
+                                "The selected meeting time is no longer "
+                                "available. Please choose from the available "
+                                "times again."
+                            )
+
+                        else:
+
+                            start_time = datetime.fromisoformat(
+                                selected_slot
+                            )
+
+                            booking_result = book_meeting(
+                                lead_id=lead_id,
+                                conversation_id=conversation_id,
+                                attendee_email=sender_email,
+                                start_time=start_time,
+                                duration_minutes=30,
+                                google_tokens_collection=google_tokens,
+                            )
+
+                            if booking_result["status"] == "confirmed":
+
+                                shared.mongo.update_lead(
+                                    lead_id,
+                                    {
+                                        "status": "booked",
+                                        "pending_booking": {
+                                            "slot": selected_slot,
+                                            "status": "confirmed",
+                                        },
+                                        "meeting_status": "confirmed",
+                                        "updated_at": datetime.utcnow(),
+                                    }
+                                )
+
+                                reply = (
+                                    "Your consultation is confirmed for "
+                                    f"{start_time.strftime('%A, %d %B at %H:%M')}. "
+                                    "You will receive the calendar invitation shortly."
+                                )
+
+                            elif booking_result["status"] == "already_booked":
+
+                                shared.mongo.update_lead(
+                                    lead_id,
+                                    {
+                                        "status": "booked",
+                                        "pending_booking": {
+                                            "slot": selected_slot,
+                                            "status": "confirmed",
+                                        },
+                                        "meeting_status": "confirmed",
+                                        "updated_at": datetime.utcnow(),
+                                    }
+                                )
+
+                                reply = (
+                                    "Your consultation is already confirmed for "
+                                    f"{start_time.strftime('%A, %d %B at %H:%M')}."
+                                )
+
+                            elif booking_result["status"] == "slot_unavailable":
+
+                                shared.mongo.update_lead(
+                                    lead_id,
+                                    {
+                                        "pending_booking": {
+                                            "status": "slot_unavailable"
+                                        },
+                                        "updated_at": datetime.utcnow(),
+                                    }
+                                )
+
+                                reply = (
+                                    "Sorry, that slot is no longer available. "
+                                    "Please choose another available time."
+                                )
+
+                            else:
+
+                                # Do not blindly retry uncertain bookings.
+                                reply = (
+                                    "I couldn't confirm the meeting because "
+                                    "the calendar response was uncertain. "
+                                    "Please try again or contact the team."
+                                )
+
+                    else:
+
+                        reply = (
+                            "Please reply with 'yes' to confirm the selected "
+                            "time."
+                        )
+
+                # -----------------------------------------------------
+                # STEP 3: SLOT WAS UNAVAILABLE
+                # -----------------------------------------------------
+
+                elif pending_status == "slot_unavailable":
+
+                    # Clear the stale booking state so qualification can
+                    # generate a fresh set of available slots.
+                    shared.mongo.update_lead(
+                        lead_id,
+                        {
+                            "pending_booking": None,
+                            "updated_at": datetime.utcnow(),
+                        }
+                    )
+
+                    qualification = qualify_lead(
+                        conversation_id=conversation_id,
+                        new_message=body,
+                    )
+
+                    status = qualification["qualification"]["status"]
+
+                    if status == "qualified":
+                        reply = qualification["qualification"]["slot_message"]
+
+                    elif status == "needs_information":
+                        reply = qualification["qualification"]["follow_up"]
+
+                    else:
+                        reply = (
+                            "Thank you for sharing those details. "
+                            "Unfortunately, your requirements do not meet "
+                            "our current qualification criteria."
+                        )
+
+                # -----------------------------------------------------
+                # STEP 4: NORMAL QUALIFICATION
+                # -----------------------------------------------------
 
                 else:
 
-                    reply = (
-                        "Thank you for your message. "
-                        "We'll review your requirements and get back to you."
+                    qualification = qualify_lead(
+                        conversation_id=conversation_id,
+                        new_message=body,
                     )
 
-            # =====================================================
+                    status = qualification["qualification"]["status"]
+
+                    if status == "needs_information":
+
+                        reply = qualification["qualification"]["follow_up"]
+
+                    elif status == "qualified":
+
+                        reply = qualification["qualification"]["slot_message"]
+
+                    elif status == "not_qualified":
+
+                        reply = (
+                            "Thank you for sharing those details. "
+                            "Unfortunately, your requirements do not meet "
+                            "our current qualification criteria."
+                        )
+
+                    else:
+
+                        reply = (
+                            "Thank you for your message. "
+                            "We'll review your requirements and get back to you."
+                        )
+
+            # ---------------------------------------------------------
             # SEND EMAIL
-            # =====================================================
+            # ---------------------------------------------------------
 
             adapter = GmailAdapter(google_tokens)
 
@@ -481,6 +602,10 @@ async def poll_gmail_inbox():
                 in_reply_to=original_message_id,
             )
 
+            # ---------------------------------------------------------
+            # SAVE OUTBOUND MESSAGE
+            # ---------------------------------------------------------
+
             shared.mongo.create_message(
                 Message(
                     conversation_id=conversation_id,
@@ -491,8 +616,6 @@ async def poll_gmail_inbox():
                     content=reply,
                 ).model_dump()
             )
-
-            print("GMAIL AI REPLY SAVED TO MONGODB")
 
             messages.append({
                 "id": gmail_message_id,
@@ -508,12 +631,23 @@ async def poll_gmail_inbox():
 
     except Exception as e:
 
-        print("GMAIL POLLING ERROR:", str(e))
-
         return {
             "gmail_connected": False,
             "error": str(e),
         }
+
+
+async def gmail_poll_loop():
+    while True:
+
+        try:
+            await poll_gmail_inbox()
+
+        except Exception as e:
+            # Keep the polling service alive if one polling cycle fails.
+            print("Gmail polling cycle failed:", str(e))
+
+        await asyncio.sleep(60)
 
 async def gmail_poll_loop():
     while True:
@@ -529,53 +663,9 @@ class QualificationTestRequest(BaseModel):
     message: str
 
 
-@app.post("/debug/qualify")
-async def test_qualification(request: QualificationTestRequest):
-    return qualify_lead(
-        conversation_id=request.conversation_id,
-        new_message=request.message,
-    )
 
-@app.get("/debug/calendar/availability")
-async def debug_calendar_availability():
-    from shared.mongo import google_tokens_collection
 
-    calendar = GoogleCalendarAdapter(
-        shared.mongo.google_tokens_collection
-    )
 
-    start = datetime.fromisoformat(
-        "2026-09-18T09:00:00+01:00"
-    )
-
-    end = datetime.fromisoformat(
-        "2026-09-18T17:00:00+01:00"
-    )
-
-    busy = calendar.get_availability(
-        start,
-        end,
-    )
-
-    return {
-        "status": "ok",
-        "busy": busy,
-    }
-
-@app.post("/debug/calendar/book")
-async def debug_calendar_book():
-    result = book_meeting(
-        lead_id="test_lead",
-        conversation_id="test_conversation",
-        attendee_email="judesilveira1@gmail.com",
-        start_time=datetime.fromisoformat(
-            "2026-09-18T10:00:00+01:00"
-        ),
-        duration_minutes=30,
-        google_tokens_collection=shared.mongo.google_tokens_collection,
-    )
-
-    return result
 
 @app.get("/api/leads")
 async def api_get_leads():
