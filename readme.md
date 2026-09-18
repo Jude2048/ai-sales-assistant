@@ -240,6 +240,21 @@ The production application is deployed using Railway.
 
 Configure the same required environment variables in the Railway service settings rather than committing them to the repository.
 
+## Approximate Model Cost
+
+Assignment 2 uses Google's `gemini-3.1-flash-lite` model through the Gemini API.
+
+The project is currently configured to use the Gemini API Free Tier, where Gemini 3.1 Flash-Lite has no charge for input or output tokens. Therefore, the estimated LLM cost for a typical Assignment 2 workflow is approximately **$0 per run**, subject to Google's current Free Tier quotas and limits.
+
+A normal workflow typically makes approximately 3 model calls:
+
+- Intake Agent: 1 call
+- Planning Agent: 1 call
+- Review Agent: 1 call
+
+If the Review Agent identifies corrections, the workflow may perform additional Planning and Review calls, resulting in approximately 5 model calls for that run.
+
+
 ## Known Limitations
 
 This project is intentionally a focused prototype rather than a production system.
